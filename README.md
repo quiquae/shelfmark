@@ -133,3 +133,69 @@ frames disagreed · `none` = unreadable.
   complete layers will catalogue only one.
 - No barcode path wired into the shelf pipeline yet — `barcodes.py` is tested
   standalone.
+
+---
+
+## Web application
+
+A mobile-first web app over the same package: photograph a shelf on a phone,
+upload it, download `catalogue.mrc`. No install for the librarian, no command
+line, one codebase served from one backend.
+
+```bash
+pip install -r requirements.txt
+SHELFCAT_FAKE_VISION=1 uvicorn web.app:app --reload --port 8031
+# open http://127.0.0.1:8031
+```
+
+`SHELFCAT_FAKE_VISION=1` makes `spines.read_spine()` return three hardcoded
+spines per crop, one of them deliberately illegible, so the whole loop is
+exercisable before a real vision backend exists. Without it `read_spine`
+raises — a stub must never quietly become the product.
+
+### How a request becomes a catalogue
+
+Image work does not run inside the request. `POST /upload` writes the frames,
+creates a row in `jobs`, and redirects; a single daemon worker thread claims
+the row and runs the existing pipeline, writing its stage and progress back to
+that row for `GET /api/jobs/{id}` to read.
+
+| Stage | Calls | Notes |
+|---|---|---|
+| ingest, crops | `pipeline.prepare` | HEIC/EXIF, sharpness gate, band detection, overlapping crops |
+| vision | `spines.transcribe_frame` | one JSON per frame in `transcripts/`, as before |
+| stitch | `pipeline.catalogue` | overlap merge, row regrouping, shelf assignment, workbook |
+| resolve | `authorities.resolve` | Open Library then Google Books, scored by `score_match` |
+| export | `export.to_csv`, `export.to_marc` | CSV and MARC21 |
+
+Nothing is reimplemented in the web layer. `web/jobs.py` orchestrates and
+persists; `web/app.py` accepts files and serves what the worker wrote.
+
+### Why MARC field 952
+
+A small library evaluates this by importing `catalogue.mrc` into Koha and
+seeing whether the books can then be found. Koha keeps item-level data in
+**952**, its local-use field, because only a few 852 subfields are free in
+MARC21 and Koha needed columns the standard does not have. Shelf order written
+only to 852 imports as bibliographic holdings text and never becomes findable
+item data. Every record therefore carries both: `952$o` with the call number
+for Koha and Evergreen, and 852 for anything else.
+
+### Nothing is dropped, end to end
+
+An unreadable spine gets a CSV row and a MARC record with `245` reading
+`[Spine not legible]`, its shelf position in `952$o`, a review note in
+`952$z`, and its source frames in `500`. A record with no `245` is rejected
+outright by an ILS, which would make the volume vanish — so the placeholder is
+load-bearing, not cosmetic. Files rejected at upload are named in the job's
+warnings and moved to `work/rejected/`, never deleted.
+
+### Tests
+
+```bash
+python tests/test_web.py        # 42 assertions, no network, exits non-zero on failure
+```
+
+The older `tests/test_*.py` scripts print `FAIL` but always exit 0, so
+`for t in tests/test_*.py; do python $t; done` reports green over a failing
+suite. `test_stitch.py` currently fails 3 of 33 assertions; see CLAUDE.md.

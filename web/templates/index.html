@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Photograph a shelf</h1>
+<p class="lede">Take one photograph per shelf row, left to right, overlapping
+each by a few books. The overlap is what lets each spine be read twice.</p>
+
+{% if not fake %}
+<p class="warn"><strong>No vision backend.</strong> Set
+<code>SHELFCAT_FAKE_VISION=1</code> to run the pipeline end to end with three
+hardcoded spines per crop, or supply a real <code>read_spine</code>.</p>
+{% else %}
+<p class="note">Running with <strong>fake vision</strong>: every crop returns
+three hardcoded spines, one of them deliberately illegible.</p>
+{% endif %}
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if rejected %}<ul class="error">{% for r in rejected %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+
+<form method="post" action="/upload" enctype="multipart/form-data">
+  <label for="collection">Collection name</label>
+  <input id="collection" name="collection" value="Shelf" required>
+
+  <label for="photos" class="filelabel">Shelf photographs</label>
+  <input id="photos" name="photos" type="file" accept="image/*"
+         capture="environment" multiple required>
+
+  <button type="submit">Catalogue these shelves</button>
+</form>
+
+{% if recent %}
+<h2>Recent runs</h2>
+<ul class="joblist">
+{% for j in recent %}
+  <li><a href="/job/{{ j.id }}">
+    <span class="jc">{{ j.collection }}</span>
+    <span class="state s-{{ j.state }}">{{ j.state }}</span>
+    {% if j.n_books %}<span class="jn">{{ j.n_books }} vol.</span>{% endif %}
+  </a></li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

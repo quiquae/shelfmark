@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ job.collection }} — shelfmark{% endblock %}
+{% block content %}
+<h1>{{ job.collection }}</h1>
+<p class="lede">Image work does not run inside the request. This page polls
+until the worker is done, so you can close it and come back.</p>
+
+<div class="bar"><div class="fill" id="fill" style="width:{{ (job.progress*100)|round }}%"></div></div>
+<p id="msg" class="msg"><strong id="stage">{{ job.stage }}</strong> — {{ job.message }}</p>
+
+<ol class="stages" id="stages">
+{% for s in stages %}<li data-stage="{{ s }}">{{ s }}</li>{% endfor %}
+</ol>
+
+<div id="failed" class="error" {% if job.state != 'failed' %}hidden{% endif %}>
+  <p><strong>Job failed.</strong> <span id="failmsg">{{ job.message }}</span></p>
+</div>
+
+<p id="doneblock" {% if job.state != 'done' %}hidden{% endif %}>
+  <a class="button" href="/job/{{ job.id }}/records">See the catalogue</a>
+</p>
+{% endblock %}
+{% block scripts %}
+<script>
+const JOB = "{{ job.id }}";
+const STAGES = {{ stages|tojson }};
+async function poll() {
+  const r = await fetch(`/api/jobs/${JOB}`);
+  if (!r.ok) return;
+  const j = await r.json();
+  document.getElementById("fill").style.width = (j.progress * 100).toFixed(0) + "%";
+  document.getElementById("stage").textContent = j.stage || j.state;
+  document.getElementById("msg").innerHTML =
+    `<strong>${j.stage || j.state}</strong> — ${j.message || ""}`;
+  const at = STAGES.indexOf(j.stage);
+  document.querySelectorAll("#stages li").forEach((li, i) => {
+    li.className = i < at ? "past" : (i === at ? "now" : "");
+  });
+  if (j.state === "done") {
+    document.getElementById("doneblock").hidden = false;
+    location.href = `/job/${JOB}/records`;
+    return;
+  }
+  if (j.state === "failed") {
+    document.getElementById("failed").hidden = false;
+    document.getElementById("failmsg").textContent = j.message;
+    return;
+  }
+  setTimeout(poll, 1000);
+}
+if ("{{ job.state }}" !== "done" && "{{ job.state }}" !== "failed") poll();
+</script>
+{% endblock %}

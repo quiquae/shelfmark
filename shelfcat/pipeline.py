@@ -116,6 +116,10 @@ def catalogue(transcript_dir, manifest_path, xlsx_path, project="UATX library",
     stats = build(xlsx_path, layers, meta, anomalies, dups, suspects, joins, project,
                   assignments=assignments, location_warnings=loc_warnings,
                   row_decisions=row_decisions)
-    return {**stats, "joins": joins, "anomalies": anomalies, "duplicates": dups,
-            "suspect_joins": suspects, "assignments": assignments,
-            "location_warnings": loc_warnings, "row_decisions": row_decisions}
+    # `layers` is returned so a caller can build records from the merged
+    # books without re-running the merge. Additive only -- the workbook is
+    # written exactly as before.
+    return {**stats, "layers": layers, "joins": joins, "anomalies": anomalies,
+            "duplicates": dups, "suspect_joins": suspects,
+            "assignments": assignments, "location_warnings": loc_warnings,
+            "row_decisions": row_decisions}

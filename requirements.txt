@@ -1,18 +1,26 @@
 # core imaging + decode
 opencv-python>=4.10
 pillow>=10
-pillow-heif>=0.16        # ingest.py: iPhone HEIC decode (was missing)
+pillow-heif>=0.16        # ingest.py: iPhone HEIC decode
 numpy>=1.26
 pyzbar>=0.1.9            # needs system lib: apt install libzbar0  /  brew install zbar
 zxing-cpp>=2.2
 
 # matching + output
-rapidfuzz>=3.9           # stitch.py: overlap alignment (was missing)
-openpyxl>=3.1            # excel.py: workbook writer (was missing)
+rapidfuzz>=3.9           # stitch.py: overlap alignment
+openpyxl>=3.1            # excel.py: workbook writer
+pymarc>=5.4              # export.py: MARC21 leader/directory/field bytes
+requests>=2.31           # authorities.py: Open Library + Google Books
+
+# web application
+fastapi>=0.115
+uvicorn[standard]>=0.30
+jinja2>=3.1              # server-rendered templates
+python-multipart>=0.0.9  # required by FastAPI for file uploads
 
 # dev / test only
 python-barcode>=0.15     # synthetic fixtures for tests
 
-# NOT USED by any module as of v1.0 — kept out deliberately:
-#   requests, isbnlib  -> authorities.py has no HTTP layer implemented
-#   streamlit          -> referred to a cli.py that does not exist
+# NOT USED by any module — kept out deliberately:
+#   isbnlib    -> nothing decodes ISBNs outside barcodes.py, which uses pyzbar
+#   streamlit  -> referred to a cli.py that never existed; the UI is web/

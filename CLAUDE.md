@@ -27,17 +27,50 @@ Extend if genuinely needed; never replace, never reimplement in the web layer.
 
 ## Known state of the code — do not assume otherwise
 
-- `authorities.py` **has no HTTP functions.** Its docstring describes
-  `isbn_lookup()` and `text_search()`; neither is implemented. `requests` and
-  `isbnlib` are declared but unused. Resolution against Open Library /
-  Google Books does not exist yet.
-- **There is no MARC export.** `excel.py` is the only exporter.
-- `db.py` is **not wired into `pipeline.py`**. The pipeline goes
-  transcripts → stitch → location → excel and never touches SQLite.
 - The 79 real transcripts use `{i, title, author, volume, detail, publisher,
   legibility, at_edge, note}` — they do **not** carry `bbox`, even though
-  `SPINE_SCHEMA` requires it. There are no per-spine crop coordinates.
-- `streamlit` in `requirements.txt` refers to a `cli.py` that does not exist.
+  `SPINE_SCHEMA` requires it. **There are no per-spine crop coordinates
+  anywhere in the system.** A review screen can therefore show the band crop
+  and an ordinal ("spine 3 of 14"), not an individual spine image. Emitting
+  `bbox` from a real `read_spine` is what unlocks per-spine crops, and
+  `SPINE_SCHEMA` already demands it.
+- `read_spine()` has **no real implementation** and must not get one by
+  accident. Without `SHELFCAT_FAKE_VISION=1` it raises. `evidence.detector`
+  records `vlm:fake` or `vlm:real` so a fake run can never later be mistaken
+  for a real one.
+- `tests/test_stitch.py` fails **3 of 33** assertions, in scenario 11 only,
+  and did so before any of this work. It feeds `"De Temporum Ratione"` against
+  `"De Temporum Rati0ne"` and expects the strict pass to refuse the join; the
+  pair scores **94.7** against `OVERLAP_SIM = 85`, so it merges. A
+  one-character error in a nineteen-character string cannot score below 85.
+  The implementation follows its documented calibration and the test's
+  expectation is stale. **Do not "fix" the code to satisfy it.**
+- Every `tests/test_*.py` script except `test_web.py` **exits 0 even when
+  assertions fail.** Chaining them in CI reports green over a red suite.
+- `streamlit` in `requirements.txt` referred to a `cli.py` that never existed.
+  Removed; the UI is `web/`.
+
+### Added after v1.0 (was missing, now real)
+
+- `authorities.py` gained the HTTP layer its docstring had always described:
+  `isbn_lookup`, `text_search`, `resolve`, and the `--selftest` it pointed at.
+  **The author is never a filter** — Open Library's `author=` and Google
+  Books' `inauthor:` are AND constraints, so a spine reading
+  "Ryals & Fielding" zeroed the whole result set. Measured: 0 candidates with
+  the author filter, 5 without. The title filters; the author scores.
+- Google Books' unauthenticated endpoint returns **429** from a shared IP, so
+  a circuit breaker drops an authority after 3 consecutive rate-limits rather
+  than spending ~1.8s of backoff per spine on a host that will not answer.
+  Affected volumes are flagged; they do not look merely "not found".
+- `shelfcat/export.py` writes CSV and MARC21.
+- `spines.transcribe_frame()` rejoins a frame's overlapping crops using
+  `stitch.best_overlap` — the same calibrated alignment, not a second rule.
+  Without it every spine near a crop boundary became a phantom second copy.
+- `pipeline.catalogue()` additionally returns `layers` so a caller can build
+  records without re-running the merge. The workbook is written as before.
+- `db.py` is now wired in, by `web/jobs.py`: images → evidence → claims →
+  records, with `job_items` holding job ownership so the provenance schema
+  itself is untouched.
 
 ## Rules
 

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ job.collection }} — catalogue{% endblock %}
+{% block content %}
+<h1>{{ job.collection }}</h1>
+<p class="lede">
+  <strong>{{ records|length }}</strong> volume(s) ·
+  <strong>{{ n_review }}</strong> need review ·
+  {{ job.n_frames }} frame(s)
+</p>
+
+<p class="downloads">
+  <a class="button" href="/job/{{ job.id }}/download/mrc">catalogue.mrc</a>
+  <a class="button ghost" href="/job/{{ job.id }}/download/csv">CSV</a>
+  <a class="button ghost" href="/job/{{ job.id }}/download/xlsx">Workbook</a>
+</p>
+
+{% if warnings %}
+<ul class="warn">{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+{% endif %}
+
+<p class="note">Every spine seen has a row, including the ones that could not
+be read. MARC field 952 carries the shelf position, which is what lets Koha
+put the book back in your hand.</p>
+
+<table class="recs">
+<thead><tr><th>Shelf</th><th>Title</th><th>Spine read</th><th>Tier</th><th></th></tr></thead>
+<tbody>
+{% for r in records %}
+<tr class="{% if r.needs_review %}review{% endif %}">
+  <td class="mono">{{ r.shelf_id }}/{{ '%03d' % r.position }}</td>
+  <td>
+    {% if r.title %}<strong>{{ r.title }}</strong>{% else %}<em>unresolved</em>{% endif %}
+    {% if r.authors %}<br><span class="dim">{{ r.authors }}</span>{% endif %}
+    {% if r.year %}<span class="dim"> ({{ r.year }})</span>{% endif %}
+  </td>
+  <td class="dim">
+    {% if r.raw_title %}{{ r.raw_title }}{% if r.raw_volume %} · {{ r.raw_volume }}{% endif %}
+    {% else %}<em>illegible</em>{% endif %}
+    {% if r.n_reads %}<br><span class="tiny">read {{ r.n_reads }}x · {{ r.confidence }}</span>{% endif %}
+  </td>
+  <td><span class="tier t-{{ r.tier }}">{{ r.tier }}</span></td>
+  <td>{% if r.needs_review %}<span class="flag">review</span>{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}
