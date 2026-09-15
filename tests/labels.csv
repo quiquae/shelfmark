@@ -1,0 +1,101 @@
+i,score,correct,spine,match,note
+1,0.85,1,The Weaker Vessel,The Weaker Vessel.,The Weaker Vessel -> The Weaker Vessel.
+2,0.85,1,Britain Pre-eminent,Britain pre-eminent,Britain Pre-eminent -> Britain pre-eminent
+3,1.00,1,Suicidal Empathy,Suicidal Empathy,Suicidal Empathy -> Suicidal Empathy
+4,0.85,1,The Weaker Vessel,The Weaker Vessel.,The Weaker Vessel -> The Weaker Vessel.
+5,0.88,1,The Age of Napoleon,The Age of Napoleon,The Age of Napoleon -> The Age of Napoleon
+6,1.00,1,To the Lighthouse,To the Lighthouse,To the Lighthouse -> To the Lighthouse
+7,1.00,1,West Kent and the Weald,West Kent and the Weald,West Kent and the Weald -> West Kent and the Weald
+8,1.00,1,The History Men,The history men,The History Men -> The history men
+9,0.85,1,The Oxford Book of Sixteenth Century Verse,The Oxford book of sixteenth century verse,The Oxford Book of Sixteenth Centu -> The Oxford book of sixteenth centu
+10,1.00,1,Heart of Darkness & Other Stories,Heart of darkness and other stories,Heart of Darkness & Other Stories -> Heart of darkness and other storie
+11,0.85,1,De Quincey's Works,De Quincey's works,De Quincey's Works -> De Quincey's works
+12,1.00,1,The Young Visiters,THE YOUNG VISITERS,The Young Visiters -> THE YOUNG VISITERS
+13,0.44,0,Goya,Goya,Goya -> Goya [uncertain]
+14,0.56,0,Losing Friends,How to Lose All Your Friends,Losing Friends -> How to Lose All Your Friends
+15,0.85,1,Alcoholics Anonymous,Alcoholics Anonymous,Alcoholics Anonymous -> Alcoholics Anonymous
+16,1.00,1,Fourteenth Century Verse and Prose,Fourteenth Century Verse and Prose,Fourteenth Century Verse and Prose -> Fourteenth Century Verse and Prose
+17,1.00,1,Essays on Contemporary Events,Essays on Contemporary Events,Essays on Contemporary Events -> Essays on Contemporary Events
+18,1.00,1,The King's Peace 1637-1641,"The King's peace, 1637-1641","The King's Peace 1637-1641 -> The King's peace, 1637-1641"
+19,1.00,1,The Pretty Lady,The Pretty Lady,The Pretty Lady -> The Pretty Lady
+20,0.53,0,C. S. Lewis,Letters of C. S. Lewis,C. S. Lewis -> Letters of C. S. Lewis
+21,0.55,0,John Clare,The letters of John Clare,John Clare -> The letters of John Clare
+22,0.44,0,The Victorian Novel,The new woman and the Victorian novel,The Victorian Novel -> The new woman and the Victorian no
+23,0.72,0,Charles II,King Charles II,Charles II -> King Charles II
+24,0.85,1,Switzerland,Switzerland,Switzerland -> Switzerland
+25,0.85,1,IMPERIUM,Imperium,IMPERIUM -> Imperium
+26,1.00,1,Whitehall Diary,Whitehall diary,Whitehall Diary -> Whitehall diary
+27,0.74,1,Anthony Trollope: The Critical Heritage,Anthony Trollope: The Critical Heritage (The Collected Critical Heritage : 19th Century Novelists),Anthony Trollope: The Critical Her -> Anthony Trollope: The Critical Her
+28,0.85,1,Commonplace Book,Commonplace book,Commonplace Book -> Commonplace book
+29,1.00,1,The Thirty-Nine Steps,The Thirty-Nine Steps,The Thirty-Nine Steps -> The Thirty-Nine Steps
+30,,,Wordsworthshire,,no candidate
+31,1.00,1,The Fortnight in September,The Fortnight In September,The Fortnight in September -> The Fortnight In September
+32,,,Auto-biography of Leigh Hunt,,no candidate
+33,1.00,1,Victorian Olympus,Victorian Olympus,Victorian Olympus -> Victorian Olympus
+34,1.00,1,The World of Jane Austen,The world of Jane Austen,The World of Jane Austen -> The world of Jane Austen
+35,0.85,1,The Collected Letters of Thomas and Jane Welsh Carlyle,The Collected Letters of Thomas and Jane Welsh Carlyle: Vol. 6,The Collected Letters of Thomas an -> The Collected Letters of Thomas an
+36,0.44,0,The Thirties,The Thirty-Nine Steps,The Thirties -> The Thirty-Nine Steps
+37,1.00,1,Roger Casement,Roger Casement,Roger Casement -> Roger Casement
+38,1.00,1,IMPERIUM,Imperium,IMPERIUM -> Imperium
+39,0.57,1,CREEVEY,The Creevey papers,CREEVEY -> The Creevey papers
+40,1.00,1,Eugene Onegin,Eugene Onegin,Eugene Onegin -> Eugene Onegin
+41,1.00,1,John Dee,John Dee,John Dee -> John Dee
+42,1.00,1,The Last Hope of Girls,The last hope of girls,The Last Hope of Girls -> The last hope of girls
+43,1.00,1,1815 The Roads to Waterloo,"1815, the roads to Waterloo","1815 The Roads to Waterloo -> 1815, the roads to Waterloo"
+44,1.00,1,Suicidal Empathy,Suicidal Empathy,Suicidal Empathy -> Suicidal Empathy
+45,0.88,1,The Age of Napoleon,The Age of Napoleon,The Age of Napoleon -> The Age of Napoleon
+46,1.00,1,Only Children,Only children,Only Children -> Only children
+47,1.00,1,In Search of a Better World,In Search of a Better World,In Search of a Better World -> In Search of a Better World
+48,1.00,1,Queen Victoria and her Prime Ministers,Queen Victoria and her prime ministers,Queen Victoria and her Prime Minis -> Queen Victoria and her prime minis
+49,0.85,1,Works of Samuel Johnson,[The works of Samuel Johnson],Works of Samuel Johnson -> [The works of Samuel Johnson]
+50,0.85,1,De Quincey's Works,De Quincey's works,De Quincey's Works -> De Quincey's works
+51,0.44,0,Harm's Way,In Harm's Way,Harm's Way -> In Harm's Way
+52,0.85,1,Thomas Rowlandson,Thomas Rowlandson,Thomas Rowlandson -> Thomas Rowlandson [uncertain]
+53,1.00,1,Spinoza,Spinoza,Spinoza -> Spinoza
+54,0.85,1,Edward I,Edward I,Edward I -> Edward I
+55,1.00,1,The Collected Letters of Thomas and Jane Welsh Carlyle,The Collected Letters of Thomas and Jane Welsh Carlyle,The Collected Letters of Thomas an -> The Collected Letters of Thomas an
+56,0.55,0,The Modern Age,Man in the modern age,The Modern Age -> Man in the modern age
+57,1.00,1,Basil Street Blues,Basil Street Blues,Basil Street Blues -> Basil Street Blues
+58,1.00,1,The Pazzi Conspiracy: The Plot against the Medici,The Pazzi Conspiracy,The Pazzi Conspiracy: The Plot aga -> The Pazzi Conspiracy
+59,1.00,1,Beyond Nab End,Beyond nab end,Beyond Nab End -> Beyond nab end
+60,1.00,1,Wellington,Wellington,Wellington -> Wellington
+61,1.00,1,The Life of Richard Wagner,The life of Richard Wagner,The Life of Richard Wagner -> The life of Richard Wagner
+62,0.44,0,The Prime Ministers,The Prime Minister,The Prime Ministers -> The Prime Minister
+63,1.00,1,Jane Eyre,Jane Eyre,Jane Eyre -> Jane Eyre
+64,1.00,1,William Wordsworth,William Wordsworth,William Wordsworth -> William Wordsworth
+65,0.44,0,Queen Victoria,Queen Victoria,Queen Victoria -> Queen Victoria
+66,1.00,1,The Trip to Echo Spring,The Trip to Echo Spring,The Trip to Echo Spring -> The Trip to Echo Spring
+67,0.85,1,Real Van Gogh: The Artist and His Letters,The Real Van Gogh The Artist And His Letters,Real Van Gogh: The Artist and His  -> The Real Van Gogh The Artist And H
+68,1.00,1,Sir Christopher Hatton,Sir Christopher Hatton,Sir Christopher Hatton -> Sir Christopher Hatton
+69,0.85,1,De Quincey's Works,De Quincey's works,De Quincey's Works -> De Quincey's works
+70,1.00,1,Aimez-vous Brahms..,Aimez-vous Brahms...,Aimez-vous Brahms.. -> Aimez-vous Brahms...
+71,0.85,1,Life in a Medieval City,Life in a medieval city,Life in a Medieval City -> Life in a medieval city
+72,0.85,1,Reading in the Dark,Reading in the dark,Reading in the Dark -> Reading in the dark
+73,0.44,0,CB,CB,CB -> CB
+74,0.85,1,Jane Austen: Critical Assessments,Jane Austen,Jane Austen: Critical Assessments -> Jane Austen [uncertain]
+75,0.44,0,Grove's Dictionary of Music and Musicians,The new Grove dictionary of music and musicians,Grove's Dictionary of Music and Mu -> The new Grove dictionary of music 
+76,1.00,1,President Reagan: The Role of a Lifetime,President Reagan,President Reagan: The Role of a Li -> President Reagan
+77,1.00,1,Now that you're back,Now that you're back,Now that you're back -> Now that you're back
+78,0.44,0,South Lancashire,Dialect of South Lancashire,South Lancashire -> Dialect of South Lancashire
+79,1.00,1,The Missing Boy,The missing boy,The Missing Boy -> The missing boy
+80,0.85,1,The Collected Letters of Thomas and Jane Welsh Carlyle,The Collected Letters of Thomas and Jane Welsh Carlyle: Vol. 6,The Collected Letters of Thomas an -> The Collected Letters of Thomas an
+81,1.00,1,Rule and Conflict in an Early Medieval Society,Rule and conflict in an early medieval society,Rule and Conflict in an Early Medi -> Rule and conflict in an early medi
+82,1.00,1,The Collected Letters of Thomas and Jane Welsh Carlyle,The Collected Letters of Thomas and Jane Welsh Carlyle,The Collected Letters of Thomas an -> The Collected Letters of Thomas an
+83,0.85,1,Encyclopedia of Music,The encyclopedia of music,Encyclopedia of Music -> The encyclopedia of music
+84,1.00,1,"GOD, ACTUALLY","God, Actually","GOD, ACTUALLY -> God, Actually"
+85,1.00,1,The Case of the Married Woman,Case of the Married Woman,The Case of the Married Woman -> Case of the Married Woman
+86,0.44,0,The Unicorn,The Last Unicorn,The Unicorn -> The Last Unicorn
+87,1.00,1,The Summer before the Dark,The Summer Before the Dark,The Summer before the Dark -> The Summer Before the Dark
+88,1.00,1,Bulwark of the Republic,Bulwark of the republic,Bulwark of the Republic -> Bulwark of the republic
+89,1.00,1,The Way We Live Now,The way we live now,The Way We Live Now -> The way we live now
+90,0.85,1,Hopkins: A Literary Biography,Hopkins,Hopkins: A Literary Biography -> Hopkins
+91,0.49,0,Homecoming,Who killed the homecoming queen?,Homecoming -> Who killed the homecoming queen?
+92,0.85,1,The Letters of Mrs Gaskell,The letters of Mrs. Gaskell,The Letters of Mrs Gaskell -> The letters of Mrs. Gaskell
+93,0.44,0,Consciousness,Consciousness explained,Consciousness -> Consciousness explained
+94,1.00,1,The Deadly Sisterhood,The deadly sisterhood,The Deadly Sisterhood -> The deadly sisterhood
+95,1.00,1,Rise to Greatness: The History of Canada,Rise To Greatness,Rise to Greatness: The History of  -> Rise To Greatness
+96,0.44,0,Samuel Johnson,Life of Samuel Johnson,Samuel Johnson -> Life of Samuel Johnson
+97,0.85,1,Oxford Originals,Oxford originals,Oxford Originals -> Oxford originals
+98,1.00,1,Psalms for People under Pressure,Psalms for People Under Pressure,Psalms for People under Pressure -> Psalms for People Under Pressure
+99,1.00,1,Fotheringham's Sporting Trivia,Fotheringham's Sporting Trivia,Fotheringham's Sporting Trivia -> Fotheringham's Sporting Trivia
+100,0.44,0,Real People,Fit for real people,Real People -> Fit for real people

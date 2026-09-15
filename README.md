@@ -265,7 +265,7 @@ Auto-accept 57% → 64%.
 ### The threshold is calibrated, not inherited
 
 ```bash
-python tests/calibrate_threshold.py        # reads work/labels.csv
+python tests/calibrate_threshold.py     # reads tests/labels.csv
 ```
 
 `REVIEW_BELOW = 0.82` decides which volumes a machine may assert unreviewed,
@@ -286,7 +286,8 @@ catalogue, precision is the expensive side: a wrong record asserted without
 review is indistinguishable from a fact, while a correct record sent to review
 costs a few seconds.
 
-`work/labels.csv` was labelled by bibliographic judgement — "does this
+`tests/labels.csv` ships with the repo, so anyone can rerun this. It was
+labelled by bibliographic judgement — "does this
 candidate denote the same *work*" — and **not** by physical verification.
 Relabel it at the shelf and rerun; that is a stronger set and the numbers will
 move.

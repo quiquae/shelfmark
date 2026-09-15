@@ -6,7 +6,7 @@ acceptable and neither is inheriting it.
 
     python tests/calibrate_threshold.py [labels.csv]
 
-The CSV needs three columns: score, correct (1/0), and note. work/labels.csv
+The CSV needs three columns: score, correct (1/0), and note. tests/labels.csv
 is a starter set of 98 real spine/candidate pairs from the UATX run, labelled
 by bibliographic judgement -- "does this candidate denote the same WORK as the
 spine" -- and NOT by physical verification. Replace it with labels made at the
@@ -25,7 +25,9 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from shelfcat.export import REVIEW_BELOW
 
-DEFAULT = pathlib.Path(__file__).resolve().parent.parent / "work" / "labels.csv"
+# Ships with the repo so the calibration is reproducible by anyone who clones
+# it -- "run this and check our numbers" is the whole credibility argument.
+DEFAULT = pathlib.Path(__file__).resolve().parent / "labels.csv"
 
 
 def load(path):
