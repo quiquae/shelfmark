@@ -38,7 +38,11 @@ button,.button{display:inline-flex;align-items:center;justify-content:center;
 button:not([class]),button.plain,ol.cands button{color:var(--ink);background:var(--card)}
 button{width:100%}
 .button.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
-.downloads{display:flex;flex-wrap:wrap;gap:.6rem}
+/* A <button> inherits width:100% from the base rule while an <a class=button>
+   does not, so a row mixing the two comes out ragged. */
+.downloads{display:flex;flex-wrap:wrap;gap:.6rem;align-items:stretch}
+.downloads button,.downloads .button{width:auto;margin-top:0}
+.downloads{margin-top:1rem}
 
 .bar{height:.55rem;background:#e8e5dd;border-radius:.3rem;overflow:hidden;margin:1rem 0 .5rem}
 .fill{height:100%;background:var(--accent);transition:width .35s ease}

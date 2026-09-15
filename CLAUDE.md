@@ -50,6 +50,29 @@ Extend if genuinely needed; never replace, never reimplement in the web layer.
 - `streamlit` in `requirements.txt` referred to a `cli.py` that never existed.
   Removed; the UI is `web/`.
 
+### Measured on the reference run — do not re-derive these by guessing
+
+| | |
+|---|---|
+| auto-acceptable, v1.0 → now | 32% → **64%** |
+| review queue on 1,017 volumes | 692 → **366** |
+| spines with at least one candidate | 99% |
+| whole library resolved | under 6 min (0.52s/spine) |
+| unreadable spines | 170 (17%) — a floor, surfaced as shelf work |
+| corroborated by a 2nd frame | 233 (23%) |
+| `REVIEW_BELOW = 0.82` | precision 1.000, recall 0.975 on 98 labelled pairs |
+
+Rerun the calibration before touching the threshold:
+`python tests/calibrate_threshold.py`. 0.82 is kept deliberately — the
+highest-scoring *wrong* match in the labelled set is 0.72, so 0.82 holds a
+0.10 margin. `work/labels.csv` is bibliographic judgement, not physical
+verification; relabel at the shelf for a stronger set.
+
+**52 rows, not 37.** `pipeline.catalogue` without a `manifest.json` skips
+`regroup_rows`, so the side-gap row merge never runs and the published
+37-row figure is not reproducible from the shipped artefacts. The 1,017 book
+count does reproduce exactly.
+
 ### Added after v1.0 (was missing, now real)
 
 - `authorities.py` gained the HTTP layer its docstring had always described:
@@ -71,6 +94,39 @@ Extend if genuinely needed; never replace, never reimplement in the web layer.
 - `db.py` is now wired in, by `web/jobs.py`: images → evidence → claims →
   records, with `job_items` holding job ownership so the provenance schema
   itself is untouched.
+- `collapse_editions()` groups candidates by (normalised title, author
+  surname) and `tier_for_candidates()` tiers on distinct works. `tier_for`
+  itself is unchanged, so `test_scoring.py` still holds.
+- `score_match` no longer hard-caps the editor/author artefact. A scholarly
+  edition credits its editor on the spine and its author in the record, so
+  they contradict by construction. The cap softens ONLY when the record's
+  author is named in the title AND a collected-edition word is present —
+  both conditions are load-bearing, because "John Clare" by Jonathan Bate vs
+  "John Clare" by John Clare passes on the surname alone and they are
+  different books. `_title_sim` also tolerates a subtitle on one side only.
+- `duplicate_report` ranks claims `confirmed`/`likely`/`possible` instead of
+  listing 248 flat, and gates the prefix rule on `at_edge`.
+  `unmarked_set_report` is what the weak claims become.
+- The review screen (`web/templates/review.html`) and
+  `jobs.apply_review` / `review_queue` / `record_detail` / `spine_window`.
+  Exports regenerate on download so corrections reach the file.
+- `/job/{id}/worklist` — unreadable spines and volume-number checks, in
+  walking order, printable, CSV.
+
+### Traps that already cost time
+
+- The base `button,.button{color:#fff}` rule blankets every button. Any new
+  button that is not a filled accent button must take `color:var(--ink)` or it
+  renders white-on-white. This silently hid the whole candidate list.
+- `Read.index` is documented 0-based but `load_transcripts` fills it from the
+  transcript's `i`, which is 1-based in all 79 real transcripts. `stitch` only
+  uses it for ordering, so the mismatch surfaces only where it indexes a list.
+- macOS Chrome clamps `--window-size` to ~500px minimum, so a 390px
+  screenshot is laid out at 500 and then cropped — which looks exactly like a
+  layout bug. Use CDP `Emulation.setDeviceMetricsOverride`.
+- `excel.build` does not create its output directory.
+- A parking directory for rejected uploads must live OUTSIDE the upload dir,
+  because `pipeline.prepare` globs `*` and will try to decode it.
 
 ## Rules
 
