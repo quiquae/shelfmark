@@ -1,43 +1,45 @@
-# shelfmark
+Metadata-Version: 2.4
+Name: shelfmark
+Version: 1.0.0
+Summary: Photograph a shelf, get an ordered catalogue: MARC21 with shelf position, from photographs of book spines
+Author: Creagh Factor
+License-Expression: AGPL-3.0-or-later
+Project-URL: Homepage, https://github.com/quiquae/shelfmark
+Project-URL: Source, https://github.com/quiquae/shelfmark
+Keywords: library,cataloguing,MARC21,Koha,retrospective conversion,book spine,OCR,Dewey
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Education
+Classifier: Topic :: Text Processing :: Markup
+Classifier: Topic :: Multimedia :: Graphics :: Capture
+Classifier: Programming Language :: Python :: 3
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: opencv-python>=4.10
+Requires-Dist: pillow>=10
+Requires-Dist: pillow-heif>=0.16
+Requires-Dist: numpy>=1.26
+Requires-Dist: rapidfuzz>=3.9
+Requires-Dist: openpyxl>=3.1
+Requires-Dist: pymarc>=5.4
+Requires-Dist: requests>=2.31
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.30
+Requires-Dist: jinja2>=3.1
+Requires-Dist: python-multipart>=0.0.9
+Provides-Extra: barcodes
+Requires-Dist: pyzbar>=0.1.9; extra == "barcodes"
+Requires-Dist: zxing-cpp>=2.2; extra == "barcodes"
+Provides-Extra: dev
+Requires-Dist: httpx>=0.27; extra == "dev"
+Requires-Dist: python-barcode>=0.15; extra == "dev"
+Dynamic: license-file
 
-**Photograph a shelf. Get an ordered catalogue.**
+# shelfcat
 
-Point a phone at a shelf of books, upload the photographs, and download a
-MARC21 file that Koha, Evergreen or FOLIO will import — with every volume's
-shelf position preserved, so the catalogue can put a physical book back in
-your hand. Built for the library that has no catalogue and no ISBNs to scan:
-pre-barcode collections, where copy-cataloguing has nothing to copy from.
-
-No install for the librarian, no command line. A phone, a browser, and a URL.
-
-```bash
-git clone https://github.com/quiquae/shelfmark && cd shelfmark
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-SHELFCAT_FAKE_VISION=1 .venv/bin/uvicorn web.app:app --port 8031
-# open http://127.0.0.1:8031
-```
-
-`SHELFCAT_FAKE_VISION=1` runs the whole loop with three hardcoded spines per
-crop, so you can see it work before wiring in a vision backend. Without it,
-`spines.read_spine()` raises — a stub must never quietly become the product.
-
-### What it does that other tools do not
-
-Every AI cataloguing tool available today catalogues **one book at a time**
-from an image. shelfmark catalogues **a shelf**, and keeps the order:
-thirty-odd spines from one photograph, merged across overlapping frames,
-each landing in MARC `952$o` as a call number you can walk to.
-
-It is also built to be trusted rather than believed. A spine is
-**transcribed, never identified** — the vision schema has no year field and
-no ISBN field on purpose, because a model asked for them invents plausible,
-wrong ones. Nothing is ever dropped: an unreadable spine still produces a
-MARC record, with its shelf position, flagged for review. Every record
-carries the frames it came from and how many times it was read.
-
-> The package inside is called `shelfcat`, which is what this was called
-> before it had a web interface. The name is load-bearing in imports and is
-> deliberately not renamed.
+Photo-to-catalogue pipeline for a large physical library. Shelf photographs in,
+searchable Excel catalogue out, with an explicit confidence tier and a full
+provenance trail on every row.
 
 ## Status — full run complete, 1 Sep 2026
 
@@ -322,31 +324,3 @@ Both run with no network and no server, and both exit non-zero on failure.
 The older `tests/test_*.py` scripts print `FAIL` but always exit 0, so
 `for t in tests/test_*.py; do python $t; done` reports green over a failing
 suite. `test_stitch.py` currently fails 3 of 33 assertions; see CLAUDE.md.
-
-
----
-
-## Licence
-
-Copyright (C) 2026 Creagh Factor.
-
-shelfmark is free software under the **GNU Affero General Public License,
-version 3 or later**. You may use, study, modify and redistribute it. If you
-run a modified version as a network service, the AGPL requires you to offer
-your users the source of that version. The full text is in
-[LICENSE](LICENSE).
-
-AGPL was chosen deliberately for a library tool. Koha itself is GPL, so
-copyleft is familiar and uncontroversial in this sector, and it keeps the
-work open while preventing a closed re-hosting of it. If you want to use
-shelfmark under different terms, ask.
-
-## Status
-
-**1.0.0** — the loop works end to end and is measured on a real 1,017-book
-collection. Not yet: multi-collection sessions, a documented deployment path,
-and a real vision backend (the seam is defined; supply `read_spine`).
-
-Contributions welcome, particularly a `read_spine` implementation that emits
-the `bbox` field `spines.SPINE_SCHEMA` already asks for — that is what turns
-the approximate spine crop in the review screen into an exact one.

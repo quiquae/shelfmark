@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shelfmark"
+version = "1.0.0"
+description = "Photograph a shelf, get an ordered catalogue: MARC21 with shelf position, from photographs of book spines"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Creagh Factor" }]
+keywords = ["library", "cataloguing", "MARC21", "Koha", "retrospective conversion",
+            "book spine", "OCR", "Dewey"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Education",
+  "Topic :: Text Processing :: Markup",
+  "Topic :: Multimedia :: Graphics :: Capture",
+  "Programming Language :: Python :: 3",
+]
+
+# Everything needed to photograph a shelf and download catalogue.mrc.
+dependencies = [
+  "opencv-python>=4.10",     # bands.py: shelf-layer detection
+  "pillow>=10",
+  "pillow-heif>=0.16",       # ingest.py: iPhone HEIC decode
+  "numpy>=1.26",
+  "rapidfuzz>=3.9",          # stitch.py: overlap alignment
+  "openpyxl>=3.1",           # excel.py: workbook writer
+  "pymarc>=5.4",             # export.py: MARC21 leader/directory bytes
+  "requests>=2.31",          # authorities.py: Open Library, Google Books
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9", # required by FastAPI for file uploads
+]
+
+[project.optional-dependencies]
+# Barcode decoding needs a system library (apt install libzbar0 /
+# brew install zbar), so it is optional: a plain install must not fail on a
+# machine that has never heard of zbar, and the shelf pipeline does not use
+# the barcode path yet.
+barcodes = ["pyzbar>=0.1.9", "zxing-cpp>=2.2"]
+dev = [
+  "httpx>=0.27",             # starlette TestClient
+  "python-barcode>=0.15",    # synthetic fixtures for tests/test_barcodes.py
+]
+
+[project.urls]
+Homepage = "https://github.com/quiquae/shelfmark"
+Source = "https://github.com/quiquae/shelfmark"
+
+[tool.setuptools]
+packages = ["shelfcat", "web"]
+
+[tool.setuptools.package-data]
+web = ["templates/*.html"]
