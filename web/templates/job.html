@@ -17,7 +17,8 @@ until the worker is done, so you can close it and come back.</p>
 </div>
 
 <p id="doneblock" {% if job.state != 'done' %}hidden{% endif %}>
-  <a class="button" href="/job/{{ job.id }}/records">See the catalogue</a>
+  <a class="button" href="/job/{{ job.id }}/records">See this sitting</a>
+  {% if job.collection_id %}<a class="button ghost" href="/collection/{{ job.collection_id }}">The whole collection</a>{% endif %}
 </p>
 {% endblock %}
 {% block scripts %}

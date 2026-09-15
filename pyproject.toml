@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shelfmark"
-version = "1.0.0"
+version = "1.1.0"
 description = "Photograph a shelf, get an ordered catalogue: MARC21 with shelf position, from photographs of book spines"
 readme = "README.md"
 requires-python = ">=3.11"

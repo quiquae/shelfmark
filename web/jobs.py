@@ -19,6 +19,8 @@ in order, and records what each returned.
 """
 import json
 import pathlib
+import re
+import sqlite3
 import threading
 import time
 import traceback
@@ -28,9 +30,21 @@ from shelfcat import authorities, db, export, pipeline, spines
 from shelfcat.excel import confidence
 
 JOBS_SCHEMA = """
+-- A collection is the library, or the room, or the bookcase: the thing whose
+-- shelf numbering is continuous. A job is one batch of photographs added to
+-- it. Photographing a whole library in one sitting is not how this gets used.
+CREATE TABLE IF NOT EXISTS collections (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  rows_per_shelf INTEGER NOT NULL DEFAULT 3,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
-  id          TEXT PRIMARY KEY,
-  collection  TEXT NOT NULL,
+  id            TEXT PRIMARY KEY,
+  collection    TEXT NOT NULL,          -- the name, kept for display
+  collection_id TEXT REFERENCES collections(id),
+  n_layers      INTEGER DEFAULT 0,      -- shelf layers this batch contributed
   state       TEXT NOT NULL DEFAULT 'queued',   -- queued|running|done|failed
   stage       TEXT,
   progress    REAL DEFAULT 0.0,
@@ -44,6 +58,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
   finished_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_jobs_coll ON jobs(collection_id, created_at);
 
 -- Job ownership lives here rather than as a column on db.evidence, so the
 -- provenance schema stays exactly as it was designed.
@@ -64,24 +79,118 @@ IMAGE_SUFFIX = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff"}
 
 # --- job rows --------------------------------------------------------------
 
+def _add_columns(con, table, columns):
+    """ALTER TABLE ... ADD COLUMN, skipping what is already there.
+
+    SQLite has no ADD COLUMN IF NOT EXISTS, and a database created before
+    these columns existed must keep working rather than requiring the
+    librarian to throw their catalogue away."""
+    have = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+    for name, decl in columns.items():
+        if name not in have:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
 def connect(db_path):
     con = db.connect(db_path)
+    # Order matters. A database written before collections existed has a jobs
+    # table without collection_id, and JOBS_SCHEMA declares an index over that
+    # column -- so the migration has to run first. On a fresh database the
+    # CREATE TABLE above already declares it and the migration is a no-op.
+    try:
+        _add_columns(con, "jobs", {"collection_id": "TEXT",
+                                   "n_layers": "INTEGER DEFAULT 0"})
+    except sqlite3.OperationalError:
+        pass                                   # no jobs table yet: fresh db
     con.executescript(JOBS_SCHEMA)
+    con.commit()
     return con
+
+
+# --- collections -----------------------------------------------------------
+
+def create_collection(con, name, rows_per_shelf=3):
+    cid = uuid.uuid4().hex[:12]
+    con.execute("INSERT INTO collections (id, name, rows_per_shelf) VALUES (?,?,?)",
+                (cid, (name or "Collection").strip() or "Collection",
+                 max(1, int(rows_per_shelf or 3))))
+    con.commit()
+    return cid
+
+
+def get_collection(con, collection_id):
+    r = con.execute("SELECT * FROM collections WHERE id=?", (collection_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def collection_jobs(con, collection_id):
+    rows = con.execute("SELECT * FROM jobs WHERE collection_id=? "
+                       "ORDER BY created_at, rowid", (collection_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def collections(con, limit=50):
+    """Every collection with enough summary to decide what to do next."""
+    rows = con.execute("""
+        SELECT c.*,
+               COUNT(j.id)                         AS n_jobs,
+               COALESCE(SUM(j.n_frames), 0)        AS n_frames,
+               COALESCE(SUM(j.n_books), 0)         AS n_books,
+               COALESCE(SUM(j.n_layers), 0)        AS n_layers,
+               MAX(j.created_at)                   AS last_added,
+               SUM(j.state = 'running' OR j.state = 'queued') AS n_active,
+               SUM(j.state = 'failed')             AS n_failed
+          FROM collections c
+     LEFT JOIN jobs j ON j.collection_id = c.id
+      GROUP BY c.id
+      ORDER BY COALESCE(MAX(j.created_at), c.created_at) DESC
+         LIMIT ?
+    """, (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def layer_offset(con, collection_id, exclude_job=None):
+    """How many shelf layers this collection already holds.
+
+    Counted from finished jobs only: a job still running has not settled its
+    layer count, and guessing would misnumber every shelf after it."""
+    if not collection_id:
+        return 0
+    sql = ("SELECT COALESCE(SUM(n_layers), 0) AS n FROM jobs "
+           "WHERE collection_id=? AND state='done'")
+    args = [collection_id]
+    if exclude_job:
+        sql += " AND id<>?"
+        args.append(exclude_job)
+    return int(con.execute(sql, args).fetchone()["n"] or 0)
+
+
+def _scope(con, job_id=None, collection_id=None):
+    """Resolve a request to the job ids it covers.
+
+    One entry point for both scopes, so the queue, the exports and the shelf
+    worklist cannot drift apart in what they consider "everything"."""
+    if job_id:
+        return [job_id]
+    if collection_id:
+        return [j["id"] for j in collection_jobs(con, collection_id)]
+    return []
 
 
 def new_id():
     return uuid.uuid4().hex[:12]
 
 
-def create(con, collection, work_dir, job_id=None, warnings=None):
+def create(con, collection, work_dir, job_id=None, warnings=None,
+           collection_id=None):
     """`warnings` carries anything already known at submission time -- files
     rejected on upload, most often. _run() appends to it rather than replacing
     it, so a rejection recorded here survives into the finished job."""
     jid = job_id or new_id()
-    con.execute("INSERT INTO jobs (id, collection, work_dir, stage, message, "
-                "warnings) VALUES (?,?,?,?,?,?)",
-                (jid, collection, str(work_dir), "queued", "waiting for the worker",
+    con.execute("INSERT INTO jobs (id, collection, collection_id, work_dir, "
+                "stage, message, warnings) VALUES (?,?,?,?,?,?,?)",
+                (jid, collection, collection_id, str(work_dir), "queued",
+                 "waiting for the worker",
                  json.dumps(list(warnings)) if warnings else None))
     con.commit()
     return jid
@@ -104,6 +213,27 @@ def _set(con, job_id, **kw):
     con.commit()
 
 
+_ROW_RANK = {"TOP": 0, "MIDDLE": 1, "BOTTOM": 2}
+
+
+def shelf_sort_key(rec):
+    """Walking order, not alphabetical order.
+
+    shelf_id is text, so ORDER BY shelf_id puts S10-TOP before S2-TOP and a
+    collection silently stops being in shelf order at its tenth shelf.
+    Sorting on the parsed number, the row's physical rank and the position
+    reproduces the actual walk."""
+    m = re.match(r"S(\d+)-(.+)$", str(rec.get("shelf_id") or ""))
+    if not m:
+        return (10 ** 9, 99, rec.get("position") or 0)
+    row = m.group(2).upper()
+    rank = _ROW_RANK.get(row)
+    if rank is None:
+        n = re.search(r"(\d+)", row)
+        rank = int(n.group(1)) if n else 98
+    return (int(m.group(1)), rank, rec.get("position") or 0)
+
+
 def warning_lines(job) -> list[str]:
     """Warnings arrive in two shapes: plain strings from ingest and this
     module, and {kind, detail, severity} dicts from location.validate. Flatten
@@ -120,13 +250,21 @@ def warning_lines(job) -> list[str]:
     return out
 
 
-def records_for(con, job_id):
-    """Every volume in the job, in shelf order, joined to its accepted claim.
+def records_for(con, job_id=None, *, collection_id=None):
+    """Every volume in scope, in walking order, joined to its accepted claim.
+
+    Scope is one job or a whole collection, resolved through _scope so the
+    queue, the exports and the shelf worklist cannot disagree about what
+    "everything" means.
 
     A LEFT JOIN, not an inner one: a record whose claim_id is null is an
     unresolved volume and must still appear. This query is the reason the
     export can promise that nothing is dropped."""
-    rows = con.execute("""
+    ids = _scope(con, job_id, collection_id)
+    if not ids:
+        return []
+    ph = ",".join("?" * len(ids))
+    rows = con.execute(f"""
         SELECT r.id AS record_row, r.evidence_id, r.claim_id, r.tier,
                r.shelf_id, r.position, r.title, r.authors, r.year,
                r.publisher, r.isbn13, r.reviewed_by, r.note,
@@ -135,9 +273,8 @@ def records_for(con, job_id):
           JOIN evidence e  ON e.id = r.evidence_id
           JOIN job_items j ON j.evidence_id = r.evidence_id
      LEFT JOIN claims c    ON c.id = r.claim_id
-         WHERE j.job_id = ?
-      ORDER BY r.shelf_id, r.position
-    """, (job_id,)).fetchall()
+         WHERE j.job_id IN ({ph})
+    """, ids).fetchall()
     out = []
     for row in rows:
         d = dict(row)
@@ -167,12 +304,13 @@ def records_for(con, job_id):
         d["reviewed"] = bool(d.get("reviewed_by"))
         d["needs_review"] = export.needs_review(d) and not d["reviewed"]
         out.append(d)
+    out.sort(key=shelf_sort_key)
     return out
 
 
 # --- work that can only be done at the shelf -------------------------------
 
-def shelf_work(con, job_id):
+def shelf_work(con, job_id=None, *, collection_id=None):
     """Everything no amount of model quality will fix, in walking order.
 
     Two kinds, and both end with a person standing in front of the books:
@@ -189,7 +327,7 @@ def shelf_work(con, job_id):
     Ordered by shelf then position so the list matches the walk, and each row
     links to its review screen: the point is to stand at the shelf with a
     phone and type in what the camera could not read."""
-    recs = records_for(con, job_id)
+    recs = records_for(con, job_id, collection_id=collection_id)
     unreadable = [r for r in recs if not (r.get("raw_title") or "").strip()]
 
     by_title = {}
@@ -205,8 +343,9 @@ def shelf_work(con, job_id):
         out = {}
         for r in rows:
             out.setdefault(r["shelf_id"] or "UNSHELVED", []).append(r)
-        return [{"shelf": k, "rows": sorted(v, key=lambda r: r["position"] or 0)}
-                for k, v in sorted(out.items())]
+        return [{"shelf": k, "rows": sorted(v, key=shelf_sort_key)}
+                for k, v in sorted(out.items(),
+                                   key=lambda kv: shelf_sort_key(kv[1][0]))]
 
     return {"unreadable": shelves(unreadable),
             "n_unreadable": len(unreadable),
@@ -286,39 +425,51 @@ def spine_window(work_dir, reads, neighbours: int = 1):
 
 REVIEW_SQL = """
     SELECT r.evidence_id, r.shelf_id, r.position, r.tier, r.reviewed_by,
-           e.payload, c.score, c.authority
+           e.payload, c.score, c.authority, j.job_id
       FROM records r
       JOIN evidence e  ON e.id = r.evidence_id
       JOIN job_items j ON j.evidence_id = r.evidence_id
  LEFT JOIN claims c    ON c.id = r.claim_id
-     WHERE j.job_id = ?
-  ORDER BY r.shelf_id, r.position
+     WHERE j.job_id IN ({ph})
 """
 
 
-def review_queue(con, job_id):
-    """Every volume a machine is not entitled to assert, in shelf order.
+def _review_rows(con, job_id=None, collection_id=None):
+    ids = _scope(con, job_id, collection_id)
+    if not ids:
+        return []
+    sql = REVIEW_SQL.format(ph=",".join("?" * len(ids)))
+    rows = [dict(r) for r in con.execute(sql, ids).fetchall()]
+    rows.sort(key=shelf_sort_key)
+    return rows
 
-    Shelf order, not confidence order: a reviewer holding a shelf list works
-    left to right along the actual shelf, and jumping them around the room to
-    save a few seconds of model uncertainty is a false economy."""
+
+def review_queue(con, job_id=None, *, collection_id=None):
+    """Every volume a machine is not entitled to assert, in walking order.
+
+    Walking order, not confidence order: a reviewer works left to right along
+    the actual shelf, and sending them round the room to save a few seconds of
+    model uncertainty is a false economy.
+
+    Given a collection, the queue spans every batch of photographs in it, so an
+    interrupted review resumes where it stopped rather than at the start of
+    whichever upload happened to be open."""
     out = []
-    for row in con.execute(REVIEW_SQL, (job_id,)).fetchall():
-        d = dict(row)
-        p = json.loads(d.pop("payload") or "{}")
+    for d in _review_rows(con, job_id, collection_id):
+        p = json.loads(d.get("payload") or "{}")
         rec = {"evidence_id": d["evidence_id"], "tier": d["tier"],
                "score": d["score"], "source": d["authority"] or "unresolved",
                "reviewed_by": d["reviewed_by"]}
         if export.needs_review(rec) and not d["reviewed_by"]:
-            out.append({"evidence_id": d["evidence_id"], "shelf_id": d["shelf_id"],
-                        "position": d["position"], "raw_title": p.get("title")})
+            out.append({"evidence_id": d["evidence_id"], "job_id": d["job_id"],
+                        "shelf_id": d["shelf_id"], "position": d["position"],
+                        "raw_title": p.get("title")})
     return out
 
 
-def review_counts(con, job_id):
+def review_counts(con, job_id=None, *, collection_id=None):
     total = reviewed = pending = 0
-    for row in con.execute(REVIEW_SQL, (job_id,)).fetchall():
-        d = dict(row)
+    for d in _review_rows(con, job_id, collection_id):
         total += 1
         if d["reviewed_by"]:
             reviewed += 1
@@ -329,16 +480,20 @@ def review_counts(con, job_id):
             "done": total - pending}
 
 
-def record_detail(con, job_id, evidence_id):
+def record_detail(con, job_id, evidence_id, *, collection_id=None):
     """One volume with every candidate the authorities offered, so a reviewer
     can see what was rejected and not only what was chosen."""
-    row = con.execute("""
-        SELECT r.*, e.payload, e.detector
+    ids = _scope(con, job_id, collection_id)
+    if not ids:
+        return None
+    ph = ",".join("?" * len(ids))
+    row = con.execute(f"""
+        SELECT r.*, e.payload, e.detector, j.job_id
           FROM records r
           JOIN evidence e  ON e.id = r.evidence_id
           JOIN job_items j ON j.evidence_id = r.evidence_id
-         WHERE j.job_id = ? AND r.evidence_id = ?
-    """, (job_id, evidence_id)).fetchone()
+         WHERE j.job_id IN ({ph}) AND r.evidence_id = ?
+    """, (*ids, evidence_id)).fetchone()
     if not row:
         return None
     d = dict(row)
@@ -494,13 +649,15 @@ def _stage_vision(con, jid, work, manifest):
     return tdir, seam_warnings
 
 
-def _stage_catalogue(con, jid, work, tdir, collection):
+def _stage_catalogue(con, jid, work, tdir, collection, *, offset=0, rows_per_shelf=3):
     _set(con, jid, stage="stitch", progress=0.55,
-         message="merging overlaps and assigning shelf rows")
+         message=(f"merging overlaps, continuing from layer {offset + 1}"
+                  if offset else "merging overlaps and assigning shelf rows"))
     (work / "out").mkdir(parents=True, exist_ok=True)   # excel.build will not
     return pipeline.catalogue(str(tdir), str(work / "manifest.json"),
                               str(work / "out" / "catalogue.xlsx"),
-                              project=collection)
+                              project=collection, rows_per_shelf=rows_per_shelf,
+                              layer_offset=offset)
 
 
 def _record_images(con, manifest):
@@ -597,11 +754,27 @@ def _run(con, job):
     warnings = prior + warnings
     tdir, seam_warnings = _stage_vision(con, jid, work, manifest)
     warnings += seam_warnings
-    res = _stage_catalogue(con, jid, work, tdir, job["collection"])
+
+    # Shelf numbering continues from whatever this collection already holds.
+    # Without it a second batch of photographs restarts at "Shelf 1 top" and
+    # every call number in it collides with the first batch's.
+    coll = get_collection(con, job.get("collection_id")) or {}
+    rows_per_shelf = int(coll.get("rows_per_shelf") or 3)
+    offset = layer_offset(con, job.get("collection_id"), exclude_job=jid)
+
+    res = _stage_catalogue(con, jid, work, tdir, job["collection"],
+                           offset=offset, rows_per_shelf=rows_per_shelf)
     warnings += res.get("location_warnings", [])
 
     layers, assignments = res["layers"], res["assignments"]
     n_books = sum(len(l) for l in layers)
+    # Recorded before resolution so a later batch can offset from it even if
+    # this job fails part-way through.
+    _set(con, jid, n_layers=len(layers))
+    if offset:
+        warnings.append(
+            f"shelf numbering continued from layer {offset + 1} of this "
+            f"collection; this batch added {len(layers)} more")
     _record_images(con, manifest)
 
     sha_by_frame = {m["name"]: m["sha256"] for m in manifest}

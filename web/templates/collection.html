@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ coll.name }} — shelfmark{% endblock %}
+{% block content %}
+<h1>{{ coll.name }}</h1>
+<p class="lede">
+  <strong>{{ counts.total }}</strong> volume(s) ·
+  {{ n_layers }} shelf row(s) · {{ n_frames }} photograph(s) ·
+  {{ batches|length }} sitting(s)
+</p>
+
+{% if request.query_params.get('reviewed') %}
+<p class="note"><strong>Review complete.</strong> Every flagged volume in this
+collection has had a decision.</p>
+{% endif %}
+
+{% if active %}
+<p class="warn">A batch is still processing. <a href="/job/{{ batches[-1].id }}">Watch it</a>.</p>
+{% endif %}
+
+<div class="bar"><div class="fill" style="width:{{ (100 * counts.done / counts.total) if counts.total else 0 }}%"></div></div>
+<p class="rmeta">{{ counts.done }} of {{ counts.total }} settled ·
+  <span class="dim">{{ counts.pending }} left to review</span></p>
+
+<p class="downloads">
+  {% if counts.pending %}
+  <a class="button" href="/collection/{{ coll.id }}/review">Resume review — {{ counts.pending }} left</a>
+  {% endif %}
+  <a class="button{% if counts.pending %} ghost{% endif %}" href="/collection/{{ coll.id }}/download/mrc">catalogue.mrc</a>
+  <a class="button ghost" href="/collection/{{ coll.id }}/download/csv">CSV</a>
+  {% if shelf_work.n_unreadable or shelf_work.volume_check %}
+  <a class="button ghost" href="/collection/{{ coll.id }}/worklist">Shelf work</a>
+  {% endif %}
+</p>
+<p class="tiny dim">The MARC and CSV cover the whole collection and are rebuilt
+from your corrections each time you download them. The Excel workbook is
+written per sitting.</p>
+
+<h2>Add more shelves</h2>
+<p class="tiny dim">Shelf numbering continues from row {{ n_layers + 1 }}, so a
+new batch will not collide with what is already catalogued.</p>
+<form method="post" action="/upload" enctype="multipart/form-data">
+  <input type="hidden" name="collection_id" value="{{ coll.id }}">
+  <label for="photos" class="filelabel">More shelf photographs</label>
+  <input id="photos" name="photos" type="file" accept="image/*"
+         capture="environment" multiple required>
+  <button type="submit">Add to {{ coll.name }}</button>
+</form>
+
+<h2>Sittings</h2>
+<ul class="joblist">
+{% for b in batches %}
+  <li><a href="/job/{{ b.id }}">
+    <span class="jc">{{ b.created_at[:16] if b.created_at else b.id }}</span>
+    <span class="state s-{{ b.state }}">{{ b.state }}</span>
+    <span class="jn">{{ b.n_frames or 0 }} frame(s) · {{ b.n_books or 0 }} vol.</span>
+  </a></li>
+{% endfor %}
+</ul>
+
+{% if warnings %}
+<h2>Warnings</h2>
+<ul class="warn">{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

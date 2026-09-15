@@ -2,6 +2,10 @@
 {% block title %}{{ job.collection }} — catalogue{% endblock %}
 {% block content %}
 <h1>{{ job.collection }}</h1>
+{% if job.collection_id %}
+<p class="tiny"><a class="link" href="/collection/{{ job.collection_id }}">← the whole
+{{ job.collection }} collection</a></p>
+{% endif %}
 <p class="lede">
   <strong>{{ records|length }}</strong> volume(s) ·
   <strong>{{ n_review }}</strong> need review ·

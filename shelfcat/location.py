@@ -19,23 +19,32 @@ depends on them. The one long pause is reported as a weak hint, not used.
 ROW_NAMES = ("top", "middle", "bottom")
 
 
-def assign(layers, rows_per_shelf: int = 3, overrides: dict | None = None):
+def assign(layers, rows_per_shelf: int = 3, overrides: dict | None = None,
+           layer_offset: int = 0):
     """Map ordered layers onto (shelf, row).
 
     overrides: {layer_index: (shelf:int, row:str)} to correct a bad boundary by
-    hand without re-running the transcription."""
+    hand without re-running the transcription.
+
+    layer_offset: how many layers of this collection were already catalogued
+    by earlier batches of photographs. A librarian photographs a few shelves,
+    comes back tomorrow and photographs a few more; without the offset the
+    second batch restarts at "Shelf 1 top" and silently overwrites the
+    first batch's shelf numbers. The offset is a count of LAYERS, not of
+    shelves, because a batch can end part-way through a bookcase."""
     overrides = overrides or {}
     out = []
     for i, layer in enumerate(layers):
+        g = i + layer_offset
         if i in overrides:
             shelf, row = overrides[i]
             src = "manual"
         else:
-            shelf = i // rows_per_shelf + 1
-            row = ROW_NAMES[i % rows_per_shelf] if rows_per_shelf == 3 else f"row {i % rows_per_shelf + 1}"
+            shelf = g // rows_per_shelf + 1
+            row = ROW_NAMES[g % rows_per_shelf] if rows_per_shelf == 3 else f"row {g % rows_per_shelf + 1}"
             src = "derived"
-        out.append({"layer": i, "shelf": shelf, "row": row, "source": src,
-                    "n_books": len(layer)})
+        out.append({"layer": i, "global_layer": g, "shelf": shelf, "row": row,
+                    "source": src, "n_books": len(layer)})
     return out
 
 

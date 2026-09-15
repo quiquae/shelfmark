@@ -4,7 +4,8 @@
 <span class="hprog">
   {% if n %}<strong>{{ n }}</strong> of {{ of }}{% else %}reviewed{% endif %}
 </span>
-<a class="hlink" href="/job/{{ job.id }}/records">catalogue</a>
+{% if coll %}<a class="hlink" href="/collection/{{ coll.id }}">{{ coll.name }}</a>
+{% else %}<a class="hlink" href="/job/{{ job.id }}/records">catalogue</a>{% endif %}
 {% endblock %}
 {% block content %}
 
@@ -124,7 +125,7 @@
 
   <p class="undoline span">
     <button class="link" data-act="undo">Undo this one <kbd>U</kbd></button>
-    {% if prev_id %}<a class="link" href="/job/{{ job.id }}/review/{{ prev_id }}">Previous <kbd>←</kbd></a>{% endif %}
+    {% if prev_id %}<a class="link" href="/job/{{ prev_job }}/review/{{ prev_id }}">Previous <kbd>←</kbd></a>{% endif %}
   </p>
 </article>
 
@@ -133,8 +134,8 @@
   <kbd>2</kbd>–<kbd>6</kbd> accept that candidate · <kbd>U</kbd> undo ·
   <kbd>←</kbd> back
 </p>
-{% if next_id %}<link rel="prefetch" href="/job/{{ job.id }}/review/{{ next_id }}">
-<img class="preload" src="/job/{{ job.id }}/spine/{{ next_id }}.jpg?w=1" alt="">{% endif %}
+{% if next_id %}<link rel="prefetch" href="/job/{{ next_job }}/review/{{ next_id }}">
+<img class="preload" src="/job/{{ next_job }}/spine/{{ next_id }}.jpg?w=1" alt="">{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -142,12 +143,16 @@
 const JOB = "{{ job.id }}";
 const EID = {{ rec.evidence_id }};
 const NEXT = {{ next_id if next_id else 'null' }};
-const RECORDS = `/job/${JOB}/records`;
+const NEXT_JOB = {{ ('"' ~ next_job ~ '"') if next_id else 'null' }};
+const COLL = {{ ('"' ~ coll.id ~ '"') if coll else 'null' }};
+const DONE_URL = COLL ? `/collection/${COLL}?reviewed=1` : `/job/${JOB}/records?reviewed=1`;
 const form = document.getElementById("editform");
 let busy = false;
 
-function go(next) {
-  location.href = next ? `/job/${JOB}/review/${next}` : `${RECORDS}?reviewed=1`;
+// A record belongs to a batch, but the queue belongs to the collection, so
+// the next volume may live under a different job id.
+function go(next, nextJob) {
+  location.href = next ? `/job/${nextJob || JOB}/review/${next}` : DONE_URL;
 }
 
 async function send(action, extra = {}) {
@@ -163,7 +168,7 @@ async function send(action, extra = {}) {
     if (action === "undo") { location.reload(); return; }
     // Prefer the server's idea of what is still pending: it knows what this
     // action just removed from the queue.
-    go(j.next_id ?? NEXT);
+    go(j.next_id ?? NEXT, j.next_job ?? NEXT_JOB);
   } catch (e) {
     alert(`Could not save: ${e}`); busy = false;
   }

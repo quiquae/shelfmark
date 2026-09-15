@@ -78,7 +78,7 @@ def load_transcripts(transcript_dir):
 
 
 def catalogue(transcript_dir, manifest_path, xlsx_path, project="UATX library",
-              rows_per_shelf=3, overrides=None):
+              rows_per_shelf=3, overrides=None, layer_offset=0):
     frames = load_transcripts(transcript_dir)
     layers, joins = segment_and_merge(frames)
 
@@ -104,7 +104,8 @@ def catalogue(transcript_dir, manifest_path, xlsx_path, project="UATX library",
             notes = [getattr(r, "note", None) for r in b.reads if getattr(r, "note", None)]
             b.note = "; ".join(dict.fromkeys(notes)) if notes else None
 
-    assignments = assign(layers, rows_per_shelf=rows_per_shelf, overrides=overrides)
+    assignments = assign(layers, rows_per_shelf=rows_per_shelf,
+                         overrides=overrides, layer_offset=layer_offset)
     loc_warnings = validate(assignments, layers, joins=joins,
                             rows_per_shelf=rows_per_shelf)
 

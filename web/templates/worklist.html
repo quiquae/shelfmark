@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Shelf work — {{ job.collection }}{% endblock %}
 {% block headerextra %}
-<a class="hlink" href="/job/{{ job.id }}/records">catalogue</a>
+{% if scope == 'collection' %}<a class="hlink" href="/collection/{{ cid }}">{{ job.collection }}</a>
+{% else %}<a class="hlink" href="/job/{{ job.id }}/records">catalogue</a>{% endif %}
 {% endblock %}
 {% block content %}
 <h1>Shelf work</h1>
@@ -10,7 +11,7 @@ every row links to its record, so you can type in what you read while standing
 in front of the book.</p>
 
 <p class="downloads noprint">
-  <a class="button ghost" href="/job/{{ job.id }}/worklist.csv">Download as CSV</a>
+  <a class="button ghost" href="{% if scope == 'collection' %}/collection/{{ cid }}{% else %}/job/{{ job.id }}{% endif %}/worklist.csv">Download as CSV</a>
   <button class="button ghost" onclick="window.print()">Print</button>
 </p>
 
