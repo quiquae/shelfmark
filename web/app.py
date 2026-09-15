@@ -14,7 +14,8 @@ import pathlib
 import shutil
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -235,6 +236,45 @@ def review_action(job_id: str, evidence_id: int, body: dict = Body(...)):
         queue = jobs.review_queue(c, job_id)
     return JSONResponse({**res, "counts": counts,
                          "next_id": queue[0]["evidence_id"] if queue else None})
+
+
+@app.get("/job/{job_id}/worklist", response_class=HTMLResponse)
+def worklist(request: Request, job_id: str):
+    """The list you print, or carry on a phone, and walk the shelves with."""
+    with db_con() as c:
+        job = jobs.get(c, job_id)
+        if not job:
+            raise HTTPException(404, "no such job")
+        work = jobs.shelf_work(c, job_id)
+    return templates.TemplateResponse(request, "worklist.html",
+                                      {"job": job, "work": work})
+
+
+@app.get("/job/{job_id}/worklist.csv")
+def worklist_csv(job_id: str):
+    import csv
+    import io
+    with db_con() as c:
+        job = jobs.get(c, job_id)
+        if not job:
+            raise HTTPException(404, "no such job")
+        work = jobs.shelf_work(c, job_id)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["task", "shelf_id", "position", "call_number", "spine_read",
+                "frames", "record_id"])
+    for group in work["unreadable"]:
+        for r in group["rows"]:
+            w.writerow(["read this spine", r["shelf_id"], r["position"],
+                        export.call_number(r), "", r["frames"], r["record_id"]])
+    for g in work["volume_check"]:
+        for r in g["members"]:
+            w.writerow(["read the volume number", r["shelf_id"], r["position"],
+                        export.call_number(r), r["raw_title"], r["frames"],
+                        r["record_id"]])
+    stem = "".join(ch if ch.isalnum() else "-" for ch in job["collection"]).strip("-")
+    return Response(buf.getvalue(), media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="{stem or "shelf"}-worklist.csv"'})
 
 
 DOWNLOADS = {

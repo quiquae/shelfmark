@@ -46,13 +46,47 @@ def surname(author: str) -> str:
     return a.split()[-1]
 
 
+def _title_sim(a: str, b: str) -> float:
+    """Title similarity that tolerates a subtitle present on one side only.
+
+    A spine usually carries the full subtitle and an authority record often
+    does not, or the reverse: "President Reagan: The Role of a Lifetime"
+    against "President Reagan" scores 0.62 on the whole strings and 1.00 on
+    the part before the colon. Both are the same book, and four of the
+    labelled pairs failed for exactly this reason."""
+    na, nb = normalise(a), normalise(b)
+    best = SequenceMatcher(None, na, nb).ratio()
+    for x, y in ((a, b), (b, a)):
+        head = normalise(str(x or "").split(":")[0])
+        if len(head) >= 6:
+            best = max(best, SequenceMatcher(None, head, normalise(y)).ratio())
+    return best
+
+
+def _record_author_is_named_in_title(read_title, cand_title, cand_surname) -> bool:
+    """True when the author contradiction is the editor/author artefact rather
+    than evidence of a different book.
+
+    Both conditions are required. The surname alone is not enough: "John
+    Clare" by Jonathan Bate (a biography) against "John Clare" by John Clare
+    (his poems) would pass on the surname and they are different books. The
+    collected-edition word is what separates a scholarly edition from a
+    biography whose subject happens to be its title."""
+    if not cand_surname:
+        return False
+    blob = f"{normalise(read_title)} {normalise(cand_title)}"
+    if cand_surname not in blob:
+        return False
+    return any(w in blob.split() for w in _COLLECTION)
+
+
 def score_match(read_title, read_author, cand_title, cand_author) -> float:
     """0..1. Title dominates; author surname is a strong confirmer.
 
     Deliberately conservative: a strong title match with a CONTRADICTED author
     is capped, because that is the signature of a different work with a
     similar name, which is exactly the error a reviewer would miss."""
-    t = SequenceMatcher(None, normalise(read_title), normalise(cand_title)).ratio()
+    t = _title_sim(read_title, cand_title)
     if not read_author or not cand_author:
         return round(t * 0.85, 3)          # unconfirmed author -> never full marks
     a_read, a_cand = surname(read_author), surname(cand_author)
@@ -62,9 +96,25 @@ def score_match(read_title, read_author, cand_title, cand_author) -> float:
     if a >= 0.85:
         return round(min(1.0, 0.75 * t + 0.25 * a + 0.05), 3)
     if a < 0.5:
+        if _record_author_is_named_in_title(read_title, cand_title, a_cand):
+            # Editor on the spine, author in the record. Treated as an
+            # unconfirmed author rather than a contradicted one: usable
+            # evidence, still short of full marks.
+            return round(t * 0.85, 3)
         return round(min(t, 0.55) * 0.8, 3)   # author contradiction: cap hard
     return round(0.75 * t + 0.25 * a, 3)
 
+
+# A scholarly edition credits its EDITOR on the spine and its AUTHOR in the
+# authority record, so the two contradict each other by construction:
+# "De Quincey's Works / Masson" against "De Quincey's works / Thomas De
+# Quincey". Measured on 98 labelled pairs, 8 correct matches sat at exactly
+# 0.44 -- min(title, 0.55) * 0.8, the contradiction cap -- for this reason
+# alone. The signature is that the record's author is named in the TITLE and
+# the title is of a collected edition.
+_COLLECTION = ("works", "letters", "papers", "diaries", "journals", "poems",
+               "essays", "writings", "correspondence", "memoirs", "speeches",
+               "notebooks", "sermons", "plays", "novels")
 
 GREEN_MIN, AMBER_MIN = 0.92, 0.72
 

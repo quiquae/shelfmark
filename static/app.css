@@ -182,3 +182,29 @@ img.preload{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none
 }
 .acts.nocand{grid-template-columns:1fr}
 @media (min-width:26rem){ .acts.nocand{grid-template-columns:1.3fr 1fr 1fr} }
+
+/* ---------- shelf worklist ---------- */
+.shelfhead{font-size:.95rem;margin:1.2rem 0 .4rem;padding-bottom:.25rem;
+  border-bottom:1px solid var(--line)}
+ul.wl{list-style:none;padding:0;margin:0}
+ul.wl a{display:flex;align-items:center;gap:.75rem;min-height:var(--tap);
+  padding:.55rem .7rem;margin-bottom:.35rem;background:var(--card);
+  border:1px solid var(--line);border-radius:.4rem;
+  text-decoration:none;color:var(--ink)}
+ul.wl a:hover{border-color:var(--accent)}
+ul.wl .pos{flex:0 0 auto;font-size:.8rem;color:var(--dim)}
+ul.wl .wtext{display:flex;flex-direction:column;min-width:0}
+ul.wl .wtext strong{font-weight:600;font-size:.9rem}
+section h2 .tiny{text-transform:none;letter-spacing:0;font-weight:400}
+section h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--dim);margin:2rem 0 .5rem}
+
+@media print{
+  header,.noprint,.lede{display:none}
+  body{background:#fff;font-size:11pt}
+  main{max-width:none;padding:0}
+  ul.wl a{border:0;border-bottom:1px solid #ccc;border-radius:0;min-height:0;
+    padding:.2rem 0;break-inside:avoid}
+  .note{background:0;border-left:0;padding:0;font-size:9pt;color:#444}
+  .shelfhead{break-after:avoid}
+}

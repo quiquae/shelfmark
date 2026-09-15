@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Shelf work — {{ job.collection }}{% endblock %}
+{% block headerextra %}
+<a class="hlink" href="/job/{{ job.id }}/records">catalogue</a>
+{% endblock %}
+{% block content %}
+<h1>Shelf work</h1>
+<p class="lede">What the camera could not settle. Take this to the shelves —
+every row links to its record, so you can type in what you read while standing
+in front of the book.</p>
+
+<p class="downloads noprint">
+  <a class="button ghost" href="/job/{{ job.id }}/worklist.csv">Download as CSV</a>
+  <button class="button ghost" onclick="window.print()">Print</button>
+</p>
+
+<section>
+  <h2>Unreadable spines
+    <span class="tiny dim">{{ work.n_unreadable }} of {{ work.total }} volumes</span>
+  </h2>
+  {% if work.n_unreadable %}
+  <p class="note">No title could be recovered from the photograph. This is a
+  floor, not a fault: a dark spine with no legible text is not recoverable
+  from any photograph, at any resolution.</p>
+    {% for group in work.unreadable %}
+    <h3 class="shelfhead mono">{{ group.shelf }}</h3>
+    <ul class="wl">
+      {% for r in group.rows %}
+      <li>
+        <a href="/job/{{ job.id }}/review/{{ r.evidence_id }}">
+          <span class="mono pos">{{ '%03d' % r.position }}</span>
+          <span class="wtext">
+            <strong>Read this spine</strong>
+            <span class="tiny dim">{{ r.frames }}</span>
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  {% else %}
+  <p class="note">Every spine was read. Nothing to do here.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Volume numbers to check
+    <span class="tiny dim">{{ work.volume_check|length }} sets · {{ work.n_volume_check }} volumes</span>
+  </h2>
+  {% if work.volume_check %}
+  <p class="note">These books share a title and none of their volume numbers
+  could be read, so their order within the set is unverified. Reported this way
+  rather than as duplicate copies, because the action is to read the volume
+  numbers — not to go looking for a second copy that may not exist.</p>
+    {% for g in work.volume_check %}
+    <h3 class="shelfhead">{{ g.title }} <span class="tiny dim">{{ g.members|length }} volumes</span></h3>
+    <ul class="wl">
+      {% for r in g.members %}
+      <li>
+        <a href="/job/{{ job.id }}/review/{{ r.evidence_id }}">
+          <span class="mono pos">{{ r.shelf_id }}/{{ '%03d' % r.position }}</span>
+          <span class="wtext">
+            <strong>Read the volume number</strong>
+            <span class="tiny dim">{{ r.frames }}</span>
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  {% else %}
+  <p class="note">No unmarked sets. Nothing to do here.</p>
+  {% endif %}
+</section>
+{% endblock %}

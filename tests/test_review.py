@@ -219,6 +219,33 @@ with TestClient(webapp.app) as client:
     check("the CSV is regenerated too", "Corrected By A Human" in csv_txt)
     check("Dewey survives into the CSV header", "ddc" in csv_txt.splitlines()[0])
 
+    print("\n=== 6b. the shelf worklist ===")
+    work = jobs.shelf_work(jobs.connect(os.environ["SHELFMARK_DB"]), jid)
+    check("the unreadable spine is on the worklist",
+          work["n_unreadable"] >= 1, str(work["n_unreadable"]))
+    check("the worklist is grouped by shelf",
+          all("shelf" in g and "rows" in g for g in work["unreadable"]),
+          str(work["unreadable"])[:80])
+    check("rows within a shelf are in walking order",
+          all([r["position"] for r in g["rows"]] ==
+              sorted(r["position"] for r in g["rows"]) for g in work["unreadable"]))
+    wl = client.get(f"/job/{jid}/worklist")
+    check("the worklist page renders", wl.status_code == 200, str(wl.status_code))
+    check("it explains that unreadable spines are a floor, not a fault",
+          "floor, not a fault" in wl.text)
+    check("every row links to its review screen",
+          f"/job/{jid}/review/" in wl.text)
+    csvr = client.get(f"/job/{jid}/worklist.csv")
+    check("the worklist downloads as CSV",
+          csvr.status_code == 200 and "text/csv" in csvr.headers["content-type"],
+          str(csvr.status_code))
+    head = csvr.text.splitlines()[0]
+    check("the CSV names the task and the call number",
+          "task" in head and "call_number" in head, head)
+    check("it is attachment-dispositioned for a phone download",
+          "attachment" in csvr.headers.get("content-disposition", ""),
+          csvr.headers.get("content-disposition", ""))
+
     print("\n=== 7. the queue drains and the screen says so ===")
     guard = 0
     while guard < 200:

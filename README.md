@@ -190,11 +190,99 @@ outright by an ILS, which would make the volume vanish — so the placeholder is
 load-bearing, not cosmetic. Files rejected at upload are named in the job's
 warnings and moved to `work/rejected/`, never deleted.
 
+### Measured on the reference run
+
+Every number below comes from the 1,017-book run in `work/transcripts`, not
+from a synthetic fixture.
+
+| | |
+|---|---|
+| spines resolving to at least one candidate | **99%** (138/140 sampled) |
+| whole library resolved | **under 6 minutes** (0.52s/spine, 679 distinct queries) |
+| auto-acceptable, as shipped in v1.0 | 32% |
+| auto-acceptable now | **64%** |
+| review queue on 1,017 volumes | 692 → **366** |
+| review time at 3s/item | 35 min → **18 min** |
+| unreadable spines (a floor, not a defect) | 170 (17%) |
+| corroborated by a second frame | 233 (23%) |
+
+Two changes produced that, both measured rather than assumed:
+
+**Editions collapse before tiering.** `tier_for` downgrades a result when a
+second candidate scores close, because ambiguity is the real risk. But almost
+every close second is another *edition of the same work*: Open Library returns
+five rows for "To the Lighthouse" that are three works, and the old tiering
+called that ambiguous and sent a score of 1.00 to review.
+`collapse_editions()` groups by (normalised title, author surname) and tiers on
+the best score per distinct work. Auto-accept 32% → 57%.
+
+**The author-contradiction cap stops misfiring on editors.** A scholarly
+edition credits its *editor* on the spine and its *author* in the authority
+record, so the two contradict by construction: "De Quincey's Works / Masson"
+against "De Quincey's works / Thomas De Quincey". Eight labelled pairs sat at
+exactly 0.44 — `min(title, 0.55) × 0.8` — for that reason alone. The cap now
+softens only when the record's author is named in the title *and* the title is
+of a collected edition; "John Clare" by Jonathan Bate against "John Clare" by
+John Clare stays capped, because a biography whose title is its subject is a
+different book. A subtitle present on one side only is also tolerated.
+Auto-accept 57% → 64%.
+
+### The threshold is calibrated, not inherited
+
+```bash
+python tests/calibrate_threshold.py        # reads work/labels.csv
+```
+
+`REVIEW_BELOW = 0.82` decides which volumes a machine may assert unreviewed,
+so it is the number every accuracy claim rests on. Against 98 labelled real
+spine/candidate pairs:
+
+| threshold | auto-accepted | wrong | precision | recall |
+|---|---|---|---|---|
+| 0.57 | 80 | 1 | 0.988 | 1.000 |
+| 0.74 | 78 | 0 | 1.000 | 0.987 |
+| **0.82** | **77** | **0** | **1.000** | **0.975** |
+| 0.88 | 53 | 0 | 1.000 | 0.671 |
+
+0.82 is kept. It auto-accepts nothing wrong, and the highest-scoring *wrong*
+match in the set is 0.72 — so 0.82 carries a 0.10 margin, where the
+technically optimal 0.74 sits one sample away from admitting errors. For a
+catalogue, precision is the expensive side: a wrong record asserted without
+review is indistinguishable from a fact, while a correct record sent to review
+costs a few seconds.
+
+`work/labels.csv` was labelled by bibliographic judgement — "does this
+candidate denote the same *work*" — and **not** by physical verification.
+Relabel it at the shelf and rerun; that is a stronger set and the numbers will
+move.
+
+### Work that only a person at the shelf can do
+
+`/job/{id}/worklist` is the list you print or carry on a phone: unreadable
+spines, and sets whose volume numbers could not be read. Ordered by shelf then
+position so it matches the walk, each row linking to its review screen so the
+answer can be typed in while standing in front of the book. Also available as
+CSV.
+
+170 of 1,017 spines (17%) are unreadable. No amount of model quality changes
+that — a dark spine with no legible text is not recoverable from a photograph
+at any resolution — so it is surfaced as a task rather than hidden as a defect.
+
+### Classification
+
+Dewey comes from the authority record, never from a model. Measured on 40 real
+spines: 55% carry a `ddc`, 84% an `lcc`, 87% subject terms. Written to MARC
+**082** (with `$2 23`), **050** and **650**. Shelf order stays in `952$o` —
+classification does not overwrite the thing that finds the physical book.
+
 ### Tests
 
 ```bash
-python tests/test_web.py        # 42 assertions, no network, exits non-zero on failure
+python tests/test_web.py        # library units: export, scoring, crop rejoin
+python tests/test_review.py     # the whole HTTP path via TestClient
 ```
+
+Both run with no network and no server, and both exit non-zero on failure.
 
 The older `tests/test_*.py` scripts print `FAIL` but always exit 0, so
 `for t in tests/test_*.py; do python $t; done` reports green over a failing

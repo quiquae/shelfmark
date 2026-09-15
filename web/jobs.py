@@ -170,6 +170,51 @@ def records_for(con, job_id):
     return out
 
 
+# --- work that can only be done at the shelf -------------------------------
+
+def shelf_work(con, job_id):
+    """Everything no amount of model quality will fix, in walking order.
+
+    Two kinds, and both end with a person standing in front of the books:
+
+    unreadable -- the spine could not be read at all. 170 of the 1,017 volumes
+      in the reference run, 17%. That is a floor, not a defect: a dark spine
+      with no text is not recoverable from any photograph.
+
+    volume_check -- several books share a title and none of their volume
+      numbers could be read, so their order within the set is unverified.
+      Reported instead of a duplicate-copy claim, because the action is "read
+      the volume numbers" and not "find the second copy".
+
+    Ordered by shelf then position so the list matches the walk, and each row
+    links to its review screen: the point is to stand at the shelf with a
+    phone and type in what the camera could not read."""
+    recs = records_for(con, job_id)
+    unreadable = [r for r in recs if not (r.get("raw_title") or "").strip()]
+
+    by_title = {}
+    for r in recs:
+        t = (r.get("raw_title") or "").strip().lower()
+        if t and not (r.get("raw_volume") or "").strip():
+            by_title.setdefault(t, []).append(r)
+    groups = [{"title": v[0]["raw_title"], "members": v}
+              for v in by_title.values() if len(v) >= 2]
+    groups.sort(key=lambda g: (-len(g["members"]), g["title"] or ""))
+
+    def shelves(rows):
+        out = {}
+        for r in rows:
+            out.setdefault(r["shelf_id"] or "UNSHELVED", []).append(r)
+        return [{"shelf": k, "rows": sorted(v, key=lambda r: r["position"] or 0)}
+                for k, v in sorted(out.items())]
+
+    return {"unreadable": shelves(unreadable),
+            "n_unreadable": len(unreadable),
+            "volume_check": groups,
+            "n_volume_check": sum(len(g["members"]) for g in groups),
+            "total": len(recs)}
+
+
 # --- spine imagery ---------------------------------------------------------
 
 def spine_window(work_dir, reads, neighbours: int = 1):
