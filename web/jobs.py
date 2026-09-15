@@ -161,10 +161,231 @@ def records_for(con, job_id):
         d["lcc"] = claim.get("lcc")
         d["subjects"] = claim.get("subjects") or []
         d["n_editions"] = claim.get("n_editions") or 0
+        d["reads"] = p.get("reads") or []
+        d["machine_tier"] = p.get("machine_tier")
         d["source"] = d.pop("authority") or "unresolved"
-        d["needs_review"] = export.needs_review(d)
+        d["reviewed"] = bool(d.get("reviewed_by"))
+        d["needs_review"] = export.needs_review(d) and not d["reviewed"]
         out.append(d)
     return out
+
+
+# --- spine imagery ---------------------------------------------------------
+
+def spine_window(work_dir, reads, neighbours: int = 1):
+    """Render a slice of the band crop containing one spine.
+
+    There are no per-spine coordinates anywhere in this system: the 79 real
+    transcripts carry an ordinal and nothing else. So the position is
+    estimated as (ordinal + 0.5) / n across the crop the spine was read from
+    -- a linear assumption whose error grows with how much spine widths vary
+    on the shelf.
+
+    The window is therefore cut wide enough to include the neighbours, and the
+    caller labels it approximate. Showing a tight crop that is confidently one
+    spine off is worse than showing three spines and saying which to look at.
+
+    Emitting `bbox` from a real read_spine replaces this estimate with the
+    truth -- spines.SPINE_SCHEMA already requires it.
+    """
+    from PIL import Image
+
+    work = pathlib.Path(work_dir)
+    for read in reads or []:
+        frame, index = read.get("image"), read.get("index")
+        if not frame or index is None:
+            continue
+        tpath = work / "transcripts" / f"{frame}.json"
+        if not tpath.exists():
+            continue
+        try:
+            spines_ = json.loads(tpath.read_text()).get("spines") or []
+        except ValueError:
+            continue
+        # Read.index is documented 0-based but load_transcripts fills it from
+        # the transcript's `i`, which is 1-based in all 79 real transcripts.
+        # stitch only ever uses index for ordering, so the mismatch never
+        # mattered there. Match on `i` and fall back to position, so this
+        # works whichever convention a vision backend follows.
+        target = next((sp for sp in spines_ if sp.get("i") == index), None)
+        if target is None and 0 <= index < len(spines_):
+            target = spines_[index]
+        if target is None:
+            continue
+        crop = target.get("crop")
+        if not crop or not pathlib.Path(crop).exists():
+            continue
+        peers = [sp for sp in spines_ if sp.get("crop") == crop]
+        try:
+            pos = peers.index(target)
+        except ValueError:
+            pos = 0
+        n = max(1, len(peers))
+
+        out = work / "spines" / f"{frame}_{index}_{neighbours}.jpg"
+        if out.exists():
+            return out, {"frame": frame, "pos": pos + 1, "of": n,
+                         "approximate": True}
+        im = Image.open(crop)
+        lo = max(0.0, (pos - neighbours) / n)
+        hi = min(1.0, (pos + 1 + neighbours) / n)
+        box = (int(lo * im.width), 0, max(int(hi * im.width), int(lo * im.width) + 8),
+               im.height)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        im.crop(box).save(out, "JPEG", quality=88, optimize=True)
+        return out, {"frame": frame, "pos": pos + 1, "of": n, "approximate": True}
+    return None, {}
+
+
+# --- review ----------------------------------------------------------------
+
+REVIEW_SQL = """
+    SELECT r.evidence_id, r.shelf_id, r.position, r.tier, r.reviewed_by,
+           e.payload, c.score, c.authority
+      FROM records r
+      JOIN evidence e  ON e.id = r.evidence_id
+      JOIN job_items j ON j.evidence_id = r.evidence_id
+ LEFT JOIN claims c    ON c.id = r.claim_id
+     WHERE j.job_id = ?
+  ORDER BY r.shelf_id, r.position
+"""
+
+
+def review_queue(con, job_id):
+    """Every volume a machine is not entitled to assert, in shelf order.
+
+    Shelf order, not confidence order: a reviewer holding a shelf list works
+    left to right along the actual shelf, and jumping them around the room to
+    save a few seconds of model uncertainty is a false economy."""
+    out = []
+    for row in con.execute(REVIEW_SQL, (job_id,)).fetchall():
+        d = dict(row)
+        p = json.loads(d.pop("payload") or "{}")
+        rec = {"evidence_id": d["evidence_id"], "tier": d["tier"],
+               "score": d["score"], "source": d["authority"] or "unresolved",
+               "reviewed_by": d["reviewed_by"]}
+        if export.needs_review(rec) and not d["reviewed_by"]:
+            out.append({"evidence_id": d["evidence_id"], "shelf_id": d["shelf_id"],
+                        "position": d["position"], "raw_title": p.get("title")})
+    return out
+
+
+def review_counts(con, job_id):
+    total = reviewed = pending = 0
+    for row in con.execute(REVIEW_SQL, (job_id,)).fetchall():
+        d = dict(row)
+        total += 1
+        if d["reviewed_by"]:
+            reviewed += 1
+        elif export.needs_review({"tier": d["tier"], "score": d["score"],
+                                  "source": d["authority"] or "unresolved"}):
+            pending += 1
+    return {"total": total, "reviewed": reviewed, "pending": pending,
+            "done": total - pending}
+
+
+def record_detail(con, job_id, evidence_id):
+    """One volume with every candidate the authorities offered, so a reviewer
+    can see what was rejected and not only what was chosen."""
+    row = con.execute("""
+        SELECT r.*, e.payload, e.detector
+          FROM records r
+          JOIN evidence e  ON e.id = r.evidence_id
+          JOIN job_items j ON j.evidence_id = r.evidence_id
+         WHERE j.job_id = ? AND r.evidence_id = ?
+    """, (job_id, evidence_id)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    p = json.loads(d.pop("payload") or "{}")
+    cands = []
+    for c in con.execute(
+            "SELECT id, authority, authority_id, title, authors, year, "
+            "publisher, isbn13, score, raw FROM claims WHERE evidence_id=? "
+            "ORDER BY score DESC", (evidence_id,)).fetchall():
+        cd = dict(c)
+        try:
+            extra = json.loads(cd.pop("raw") or "{}") or {}
+        except (TypeError, ValueError):
+            extra = {}
+        cd["ddc"] = extra.get("ddc")
+        cd["lcc"] = extra.get("lcc")
+        cd["subjects"] = extra.get("subjects") or []
+        cd["n_editions"] = extra.get("n_editions") or 1
+        cd["chosen"] = cd["id"] == d.get("claim_id")
+        cands.append(cd)
+    d["spine"] = {"title": p.get("title"), "author": p.get("author"),
+                  "volume": p.get("volume"), "legibility": p.get("legibility"),
+                  "confidence": p.get("confidence"), "n_reads": p.get("n_reads"),
+                  "frames": p.get("frames") or [], "flags": p.get("flags") or [],
+                  "variants": p.get("variants") or [], "reads": p.get("reads") or []}
+    d["machine_tier"] = p.get("machine_tier")
+    d["candidates"] = cands
+    return d
+
+
+def apply_review(con, job_id, evidence_id, action, *, claim_id=None,
+                 fields=None, reviewer="reviewer"):
+    """Accept, correct, skip or undo one volume.
+
+    Accepting promotes the row to green, which db.set_tier permits only with a
+    named reviewer -- a machine pass may never reach green on text evidence.
+    Undo restores the tier the machine originally assigned, which is why that
+    verdict is kept in the evidence payload rather than overwritten."""
+    cur = con.execute("SELECT * FROM records r JOIN job_items j "
+                      "ON j.evidence_id = r.evidence_id "
+                      "WHERE j.job_id=? AND r.evidence_id=?",
+                      (job_id, evidence_id)).fetchone()
+    if not cur:
+        raise KeyError(f"no record {evidence_id} in job {job_id}")
+
+    if action == "skip":
+        # Seen and deliberately left alone. The tier does not move, so the
+        # volume still reads as unverified in the export -- skipping is not
+        # approval, and pretending otherwise is how a bad record ships.
+        con.execute("UPDATE records SET reviewed_by=?, reviewed_at="
+                    "CURRENT_TIMESTAMP, note=? WHERE evidence_id=?",
+                    (reviewer, "skipped at review", evidence_id))
+        con.commit()
+        return {"tier": cur["tier"], "action": "skip"}
+
+    if action == "undo":
+        payload = json.loads(con.execute(
+            "SELECT payload FROM evidence WHERE id=?",
+            (evidence_id,)).fetchone()["payload"] or "{}")
+        con.execute("UPDATE records SET reviewed_by=NULL, reviewed_at=NULL, "
+                    "note=NULL, tier=? WHERE evidence_id=?",
+                    (payload.get("machine_tier") or cur["tier"], evidence_id))
+        con.commit()
+        return {"tier": payload.get("machine_tier"), "action": "undo"}
+
+    if action not in ("accept", "edit"):
+        raise ValueError(f"unknown action {action!r}")
+
+    if action == "accept" and claim_id is not None:
+        c = con.execute("SELECT * FROM claims WHERE id=? AND evidence_id=?",
+                        (claim_id, evidence_id)).fetchone()
+        if not c:
+            raise KeyError(f"claim {claim_id} does not belong to {evidence_id}")
+        con.execute("UPDATE records SET claim_id=?, title=?, authors=?, year=?, "
+                    "publisher=?, isbn13=? WHERE evidence_id=?",
+                    (claim_id, c["title"], c["authors"], c["year"],
+                     c["publisher"], c["isbn13"], evidence_id))
+    if fields:
+        allowed = ("title", "authors", "year", "publisher", "isbn13")
+        sets = {k: (fields.get(k) or None) for k in allowed if k in fields}
+        if sets:
+            con.execute(f"UPDATE records SET {', '.join(f'{k}=?' for k in sets)} "
+                        f"WHERE evidence_id=?", (*sets.values(), evidence_id))
+
+    title = con.execute("SELECT title FROM records WHERE evidence_id=?",
+                        (evidence_id,)).fetchone()["title"]
+    # A volume with no title is not verified, whatever the reviewer pressed.
+    target = "green" if (title or "").strip() else "red"
+    con.commit()
+    db.set_tier(con, evidence_id, target, reviewed_by=reviewer)
+    return {"tier": target, "action": action}
+
 
 
 # --- stages ----------------------------------------------------------------
@@ -277,7 +498,13 @@ def _persist_book(con, jid, book, shelf_id, position, sha, detector, cache):
     payload = {"title": book.title, "author": book.author, "volume": book.volume,
                "legibility": book.legibility, "confidence": confidence(book),
                "n_reads": book.n_reads, "frames": book.sources,
-               "flags": list(book.flags), "variants": list(book.variants)}
+               "flags": list(book.flags), "variants": list(book.variants),
+               # where this spine was read, so the review screen can show the
+               # right crop, and what the machine decided, so a review can be
+               # undone without losing the original verdict
+               "reads": [{"image": r.image, "index": r.index,
+                          "at_edge": bool(r.at_edge)} for r in book.reads],
+               "machine_tier": tier}
     if err:
         payload["resolve_error"] = err
 

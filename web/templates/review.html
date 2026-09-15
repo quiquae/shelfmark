@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ job.collection }}{% endblock %}
+{% block headerextra %}
+<span class="hprog">
+  {% if n %}<strong>{{ n }}</strong> of {{ of }}{% else %}reviewed{% endif %}
+</span>
+<a class="hlink" href="/job/{{ job.id }}/records">catalogue</a>
+{% endblock %}
+{% block content %}
+
+<div class="rprog"><div class="rfill" style="width:{{ (100 * counts.done / counts.total) if counts.total else 0 }}%"></div></div>
+<p class="rmeta">
+  {{ counts.done }} of {{ counts.total }} volumes settled ·
+  <span class="dim">{{ counts.pending }} left</span>
+</p>
+
+<article class="card" id="card" data-eid="{{ rec.evidence_id }}">
+
+  <div class="shelfline span">
+    <span class="mono">{{ rec.shelf_id }}/{{ '%03d' % rec.position }}</span>
+    <span class="tier t-{{ rec.tier }}">{{ rec.tier }}</span>
+  </div>
+
+  <figure class="spine pane-img">
+    <img id="spineimg" src="/job/{{ job.id }}/spine/{{ rec.evidence_id }}.jpg?w=1"
+         alt="Photograph of the shelf around this spine" loading="eager"
+         onerror="this.closest('figure').classList.add('noimg')">
+    <figcaption>
+      {% if rec.spine.reads %}
+        Spine {{ rec.spine.reads[0].index }} in {{ rec.spine.frames|join(', ') }}
+        · <span class="dim">position approximate — shown with its neighbours</span>
+      {% else %}<span class="dim">no crop available</span>{% endif %}
+    </figcaption>
+  </figure>
+
+  <div class="pane-body">
+  <section class="block first">
+    <h2>The spine reads</h2>
+    {% if rec.spine.title %}
+      <p class="spinetext">{{ rec.spine.title }}</p>
+      {% if rec.spine.author %}<p class="dim">{{ rec.spine.author }}</p>{% endif %}
+      {% if rec.spine.volume %}<p class="dim">{{ rec.spine.volume }}</p>{% endif %}
+    {% else %}
+      <p class="spinetext dim"><em>Not legible.</em> This volume needs reading
+      at the shelf — no title could be recovered from the photograph.</p>
+    {% endif %}
+    <p class="tiny">
+      read {{ rec.spine.n_reads }}× · {{ rec.spine.confidence }} confidence
+      {%- if rec.spine.flags %} · {{ rec.spine.flags|join(', ') }}{% endif %}
+    </p>
+    {% if rec.spine.variants %}
+    <p class="warn tiny">Frames disagreed: {{ rec.spine.variants|join(' / ') }}</p>
+    {% endif %}
+  </section>
+
+  {% set top = rec.candidates[0] if rec.candidates else none %}
+  <section class="block proposed">
+    <h2>Proposed match</h2>
+    {% if top %}
+      <p class="ptitle">{{ top.title }}</p>
+      <p class="dim">
+        {{ top.authors or 'author unknown' }}{% if top.year %} · {{ top.year }}{% endif %}
+        {%- if top.publisher %} · {{ top.publisher }}{% endif %}
+      </p>
+      <p class="tiny">
+        score <strong>{{ '%.2f' % top.score }}</strong>
+        {%- if top.score < review_below %} <span class="flag">below {{ review_below }}</span>{% endif %}
+        · {{ top.authority }}
+        {%- if top.n_editions > 1 %} · {{ top.n_editions }} editions{% endif %}
+        {%- if top.ddc %} · Dewey {{ top.ddc }}{% endif %}
+        {%- if top.lcc %} · LC {{ top.lcc }}{% endif %}
+      </p>
+    {% else %}
+      <p class="ptitle dim"><em>No candidate found.</em></p>
+      <p class="tiny">Accepting keeps the row unverified. Type the details in
+      instead, or skip and read it at the shelf.</p>
+    {% endif %}
+  </section>
+
+  {# With no candidate there is nothing to accept, so Correct leads. Offering
+     a green Accept for an empty match invites a reviewer moving at speed to
+     confirm a blank record. #}
+  <div class="acts{% if not top %} nocand{% endif %}">
+    {% if top %}
+      <button class="big ok" data-act="accept">Accept <kbd>A</kbd></button>
+      <button class="big" data-act="editform">Correct <kbd>E</kbd></button>
+    {% else %}
+      <button class="big ok" data-act="editform">Type it in <kbd>E</kbd></button>
+      <button class="big ghost" data-act="accept">Leave unverified <kbd>A</kbd></button>
+    {% endif %}
+    <button class="big ghost" data-act="skip">Skip <kbd>S</kbd></button>
+  </div>
+
+  <form class="editform" id="editform" hidden>
+    <label>Title <input name="title" value="{{ (top.title if top else rec.spine.title) or '' }}"></label>
+    <label>Author <input name="authors" value="{{ (top.authors if top else rec.spine.author) or '' }}"></label>
+    <div class="row2">
+      <label>Year <input name="year" value="{{ (top.year if top else '') or '' }}"></label>
+      <label>ISBN <input name="isbn13" value="{{ (top.isbn13 if top else '') or '' }}"></label>
+    </div>
+    <label>Publisher <input name="publisher" value="{{ (top.publisher if top else '') or '' }}"></label>
+    <button class="big ok" type="submit">Save and continue <kbd>⏎</kbd></button>
+  </form>
+
+  {% if rec.candidates|length > 1 %}
+  <section class="block">
+    <h2>Other candidates <span class="tiny dim">press the number to accept</span></h2>
+    <ol class="cands">
+      {% for c in rec.candidates[1:6] %}
+      <li><button data-act="accept" data-claim="{{ c.id }}">
+        <span class="num">{{ loop.index + 1 }}</span>
+        <span class="ctext">
+          <strong>{{ c.title }}</strong>
+          <span class="dim">{{ c.authors or 'author unknown' }}{% if c.year %} · {{ c.year }}{% endif %}</span>
+        </span>
+        <span class="cscore mono">{{ '%.2f' % c.score }}</span>
+      </button></li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  </div>{# /pane-body #}
+
+  <p class="undoline span">
+    <button class="link" data-act="undo">Undo this one <kbd>U</kbd></button>
+    {% if prev_id %}<a class="link" href="/job/{{ job.id }}/review/{{ prev_id }}">Previous <kbd>←</kbd></a>{% endif %}
+  </p>
+</article>
+
+<p class="keys tiny dim">
+  <kbd>A</kbd> accept · <kbd>E</kbd> correct · <kbd>S</kbd> skip ·
+  <kbd>2</kbd>–<kbd>6</kbd> accept that candidate · <kbd>U</kbd> undo ·
+  <kbd>←</kbd> back
+</p>
+{% if next_id %}<link rel="prefetch" href="/job/{{ job.id }}/review/{{ next_id }}">
+<img class="preload" src="/job/{{ job.id }}/spine/{{ next_id }}.jpg?w=1" alt="">{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const JOB = "{{ job.id }}";
+const EID = {{ rec.evidence_id }};
+const NEXT = {{ next_id if next_id else 'null' }};
+const RECORDS = `/job/${JOB}/records`;
+const form = document.getElementById("editform");
+let busy = false;
+
+function go(next) {
+  location.href = next ? `/job/${JOB}/review/${next}` : `${RECORDS}?reviewed=1`;
+}
+
+async function send(action, extra = {}) {
+  if (busy) return;
+  busy = true;
+  try {
+    const r = await fetch(`/api/job/${JOB}/review/${EID}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action, ...extra}),
+    });
+    if (!r.ok) { alert(`Could not save: ${r.status} ${await r.text()}`); busy = false; return; }
+    const j = await r.json();
+    if (action === "undo") { location.reload(); return; }
+    // Prefer the server's idea of what is still pending: it knows what this
+    // action just removed from the queue.
+    go(j.next_id ?? NEXT);
+  } catch (e) {
+    alert(`Could not save: ${e}`); busy = false;
+  }
+}
+
+function showEdit() {
+  form.hidden = false;
+  document.querySelector('[data-act="editform"]').hidden = true;
+  form.querySelector('input[name="title"]').focus({preventScroll: false});
+}
+
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-act]");
+  if (!b) return;
+  ev.preventDefault();
+  const act = b.dataset.act;
+  if (act === "editform") return showEdit();
+  const extra = b.dataset.claim ? {claim_id: Number(b.dataset.claim)} : {};
+  send(act, extra);
+});
+
+form.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const fields = {};
+  new FormData(form).forEach((v, k) => fields[k] = String(v).trim());
+  send("edit", {fields});
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName);
+  if (typing) {
+    if (ev.key === "Escape") { form.hidden = true; ev.target.blur(); }
+    return;                                  // never steal keys mid-typing
+  }
+  const k = ev.key.toLowerCase();
+  if (k === "a" || ev.key === "Enter") { ev.preventDefault(); send("accept"); }
+  else if (k === "e") { ev.preventDefault(); showEdit(); }
+  else if (k === "s" || ev.key === "ArrowRight") { ev.preventDefault(); send("skip"); }
+  else if (k === "u") { ev.preventDefault(); send("undo"); }
+  else if (ev.key === "ArrowLeft") {
+    const p = document.querySelector('.undoline a.link');
+    if (p) { ev.preventDefault(); location.href = p.href; }
+  } else if (/^[2-9]$/.test(ev.key)) {
+    const btn = document.querySelectorAll('.cands [data-act="accept"]')[Number(ev.key) - 2];
+    if (btn) { ev.preventDefault(); btn.click(); }
+  }
+});
+
+// Widen the crop on tap: the position is an estimate, so being able to see
+// more of the shelf is the fastest way to resolve an off-by-one.
+let w = 1;
+document.getElementById("spineimg")?.addEventListener("click", (e) => {
+  w = w >= 4 ? 1 : w + 1;
+  e.target.src = `/job/${JOB}/spine/${EID}.jpg?w=${w}`;
+});
+</script>
+{% endblock %}

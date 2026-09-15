@@ -8,8 +8,19 @@
   {{ job.n_frames }} frame(s)
 </p>
 
+{% if request.query_params.get('reviewed') %}
+<p class="note"><strong>Review complete.</strong> Every flagged volume has had
+a decision. The downloads below are regenerated from your corrections.</p>
+{% endif %}
+
+{% if n_review %}
 <p class="downloads">
-  <a class="button" href="/job/{{ job.id }}/download/mrc">catalogue.mrc</a>
+  <a class="button" href="/job/{{ job.id }}/review">Review {{ n_review }} flagged volume{{ '' if n_review == 1 else 's' }}</a>
+</p>
+{% endif %}
+
+<p class="downloads">
+  <a class="button{% if n_review %} ghost{% endif %}" href="/job/{{ job.id }}/download/mrc">catalogue.mrc</a>
   <a class="button ghost" href="/job/{{ job.id }}/download/csv">CSV</a>
   <a class="button ghost" href="/job/{{ job.id }}/download/xlsx">Workbook</a>
 </p>

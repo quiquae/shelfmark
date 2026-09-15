@@ -20,6 +20,7 @@ python-multipart>=0.0.9  # required by FastAPI for file uploads
 
 # dev / test only
 python-barcode>=0.15     # synthetic fixtures for tests
+httpx>=0.27              # required by starlette TestClient (tests/test_review.py)
 
 # NOT USED by any module — kept out deliberately:
 #   isbnlib    -> nothing decodes ISBNs outside barcodes.py, which uses pyzbar

@@ -13,11 +13,12 @@ import os
 import pathlib
 import shutil
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from shelfcat import export
 from web import jobs
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -157,6 +158,85 @@ def job_records(request: Request, job_id: str):
          "warnings": jobs.warning_lines(j)})
 
 
+# --- review ----------------------------------------------------------------
+
+@app.get("/job/{job_id}/review", response_class=HTMLResponse)
+def review_start(job_id: str):
+    """Jump to the first volume still needing a decision."""
+    with db_con() as c:
+        if not jobs.get(c, job_id):
+            raise HTTPException(404, "no such job")
+        queue = jobs.review_queue(c, job_id)
+    if not queue:
+        return RedirectResponse(f"/job/{job_id}/records?reviewed=1", status_code=303)
+    return RedirectResponse(f"/job/{job_id}/review/{queue[0]['evidence_id']}",
+                            status_code=303)
+
+
+@app.get("/job/{job_id}/review/{evidence_id}", response_class=HTMLResponse)
+def review_one(request: Request, job_id: str, evidence_id: int):
+    with db_con() as c:
+        job = jobs.get(c, job_id)
+        if not job:
+            raise HTTPException(404, "no such job")
+        rec = jobs.record_detail(c, job_id, evidence_id)
+        if not rec:
+            raise HTTPException(404, "no such record in this job")
+        queue = jobs.review_queue(c, job_id)
+        counts = jobs.review_counts(c, job_id)
+    ids = [q["evidence_id"] for q in queue]
+    # The current record may already be reviewed (arrived via a back button),
+    # in which case it is not in the queue and there is no "n of m" for it.
+    idx = ids.index(evidence_id) if evidence_id in ids else None
+    nxt = ids[idx + 1] if idx is not None and idx + 1 < len(ids) else (
+        ids[0] if ids and idx is None else None)
+    prev = ids[idx - 1] if idx not in (None, 0) else None
+    return templates.TemplateResponse(request, "review.html", {
+        "job": job, "rec": rec, "counts": counts,
+        "n": (idx + 1) if idx is not None else None, "of": len(ids),
+        "next_id": nxt, "prev_id": prev,
+        "review_below": export.REVIEW_BELOW})
+
+
+@app.get("/job/{job_id}/spine/{evidence_id}.jpg")
+def spine_image(job_id: str, evidence_id: int, w: int = 1):
+    with db_con() as c:
+        job = jobs.get(c, job_id)
+        if not job:
+            raise HTTPException(404, "no such job")
+        rec = jobs.record_detail(c, job_id, evidence_id)
+    if not rec:
+        raise HTTPException(404, "no such record")
+    path, _meta = jobs.spine_window(job["work_dir"], rec["spine"]["reads"],
+                                    neighbours=max(0, min(w, 4)))
+    if not path:
+        raise HTTPException(404, "no crop available for this spine")
+    return FileResponse(path, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.post("/api/job/{job_id}/review/{evidence_id}")
+def review_action(job_id: str, evidence_id: int, body: dict = Body(...)):
+    action = (body or {}).get("action")
+    with db_con() as c:
+        try:
+            res = jobs.apply_review(
+                c, job_id, evidence_id, action,
+                claim_id=(body or {}).get("claim_id"),
+                fields=(body or {}).get("fields"),
+                reviewer=(body or {}).get("reviewer") or "reviewer")
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except PermissionError as e:
+            raise HTTPException(409, str(e))
+        counts = jobs.review_counts(c, job_id)
+        queue = jobs.review_queue(c, job_id)
+    return JSONResponse({**res, "counts": counts,
+                         "next_id": queue[0]["evidence_id"] if queue else None})
+
+
 DOWNLOADS = {
     "mrc": ("catalogue.mrc", "application/marc"),
     "csv": ("catalogue.csv", "text/csv"),
@@ -175,6 +255,19 @@ def download(job_id: str, fmt: str):
         raise HTTPException(404, "no such job")
     name, media = DOWNLOADS[fmt]
     path = pathlib.Path(j["work_dir"]) / "out" / name
+    if fmt in ("csv", "mrc"):
+        # Regenerated from the current records on every download. Writing
+        # these once at the end of the job would hand the librarian a file
+        # that silently predates every correction they just made.
+        with db_con() as c:
+            recs = jobs.records_for(c, job_id)
+        if recs:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if fmt == "csv":
+                export.to_csv(path, recs)
+            else:
+                export.to_marc(path, recs, org="ShelfMark",
+                               library=(j["collection"] or "MAIN")[:10])
     if not path.exists():
         raise HTTPException(409, f"{name} has not been written yet "
                                  f"(job is {j['state']}, stage {j['stage']})")
