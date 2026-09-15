@@ -41,7 +41,7 @@ carries the frames it came from and how many times it was read.
 
 ## Status — full run complete, 1 Sep 2026
 
-79 frames of the UATX library (IMG_2152–2230), all 24 MP, all passing the
+79 frames of a private library (IMG_2152–2230), all 24 MP, all passing the
 sharpness gate:
 
 **1,282 raw spine reads → 1,017 unique books**, 37 shelf rows across 13 shelves.
