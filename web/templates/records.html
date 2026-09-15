@@ -22,8 +22,9 @@
 be read. MARC field 952 carries the shelf position, which is what lets Koha
 put the book back in your hand.</p>
 
+<div class="tablewrap">
 <table class="recs">
-<thead><tr><th>Shelf</th><th>Title</th><th>Spine read</th><th>Tier</th><th></th></tr></thead>
+<thead><tr><th>Shelf</th><th>Title</th><th>Spine read</th><th>Status</th></tr></thead>
 <tbody>
 {% for r in records %}
 <tr class="{% if r.needs_review %}review{% endif %}">
@@ -38,10 +39,13 @@ put the book back in your hand.</p>
     {% else %}<em>illegible</em>{% endif %}
     {% if r.n_reads %}<br><span class="tiny">read {{ r.n_reads }}x · {{ r.confidence }}</span>{% endif %}
   </td>
-  <td><span class="tier t-{{ r.tier }}">{{ r.tier }}</span></td>
-  <td>{% if r.needs_review %}<span class="flag">review</span>{% endif %}</td>
+  <td class="status">
+    <span class="tier t-{{ r.tier }}">{{ r.tier }}</span>
+    {% if r.needs_review %}<span class="flag">needs review</span>{% endif %}
+  </td>
 </tr>
 {% endfor %}
 </tbody>
 </table>
+</div>
 {% endblock %}

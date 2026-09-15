@@ -57,16 +57,36 @@ button{width:100%}
 .s-failed{background:#fdeeee;color:var(--accent)}
 .s-running{background:#fdf6e3;color:var(--warn)}
 
-table.recs{width:100%;border-collapse:collapse;margin-top:1rem;font-size:.9rem}
+/* A table is the one element that will happily push the whole page wider than
+   the viewport, which clips every other block on a phone. It scrolls inside
+   its own wrapper instead. */
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:1rem;
+  border:1px solid var(--line);border-radius:.4rem;background:var(--card)}
+table.recs{width:100%;border-collapse:collapse;font-size:.9rem;min-width:22rem}
 .recs th{text-align:left;font-size:.75rem;text-transform:uppercase;
   letter-spacing:.05em;color:var(--dim);border-bottom:1px solid var(--line);padding:.4rem .5rem}
-.recs td{border-bottom:1px solid var(--line);padding:.55rem .5rem;vertical-align:top}
+/* break-word, not anywhere: `anywhere` also splits short labels like a tier
+   badge into "AMBE" / "R". Long titles still wrap; badges never do. */
+.recs td{border-bottom:1px solid var(--line);padding:.55rem .5rem;vertical-align:top;
+  overflow-wrap:break-word}
+.recs tr:last-child td{border-bottom:0}
 .recs tr.review{background:#fffdf5}
-.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace;font-size:.82rem}
+.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace;
+  font-size:.82rem;white-space:nowrap}
 .dim{color:var(--dim)}
-.tier{font-size:.72rem;text-transform:uppercase;padding:.15rem .4rem;border-radius:.2rem}
+.status{white-space:nowrap}
+.tier{display:inline-block;font-size:.72rem;text-transform:uppercase;
+  padding:.15rem .4rem;border-radius:.2rem;white-space:nowrap}
 .t-green{background:#e4efe7;color:var(--ok)}
 .t-amber{background:#fdf6e3;color:var(--warn)}
 .t-red,.t-black{background:#fdeeee;color:var(--accent)}
-.flag{font-size:.72rem;color:var(--accent);font-weight:600}
-@media (max-width:30rem){ .recs th:nth-child(3),.recs td:nth-child(3){display:none} }
+.flag{display:block;margin-top:.25rem;font-size:.7rem;color:var(--accent);
+  font-weight:600;white-space:nowrap}
+/* On a phone the raw spine read is the first thing to go: the resolved title
+   and the shelf position are what the reader is checking. It stays in the CSV
+   and in MARC 500 either way. */
+@media (max-width:34rem){
+  .recs th:nth-child(3),.recs td:nth-child(3){display:none}
+  table.recs{min-width:0}
+  main{padding-left:.85rem;padding-right:.85rem}
+}
