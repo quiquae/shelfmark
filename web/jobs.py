@@ -130,7 +130,7 @@ def records_for(con, job_id):
         SELECT r.id AS record_row, r.evidence_id, r.claim_id, r.tier,
                r.shelf_id, r.position, r.title, r.authors, r.year,
                r.publisher, r.isbn13, r.reviewed_by, r.note,
-               e.payload, e.detector, c.score, c.authority
+               e.payload, e.detector, c.score, c.authority, c.raw AS claim_raw
           FROM records r
           JOIN evidence e  ON e.id = r.evidence_id
           JOIN job_items j ON j.evidence_id = r.evidence_id
@@ -152,6 +152,15 @@ def records_for(con, job_id):
         d["flags"] = ", ".join(p.get("flags") or [])
         d["variants"] = p.get("variants") or []
         d["resolve_error"] = p.get("resolve_error")
+        claim = {}
+        try:
+            claim = json.loads(d.pop("claim_raw") or "{}") or {}
+        except (TypeError, ValueError):
+            claim = {}
+        d["ddc"] = claim.get("ddc")
+        d["lcc"] = claim.get("lcc")
+        d["subjects"] = claim.get("subjects") or []
+        d["n_editions"] = claim.get("n_editions") or 0
         d["source"] = d.pop("authority") or "unresolved"
         d["needs_review"] = export.needs_review(d)
         out.append(d)
@@ -288,7 +297,13 @@ def _persist_book(con, jid, book, shelf_id, position, sha, detector, cache):
             (eid, c["authority"], c.get("authority_id"), c.get("title"),
              c.get("authors"), c.get("year"), c.get("publisher"),
              c.get("isbn13"), c.get("score"),
-             json.dumps(c.get("raw"), default=str))).lastrowid
+             # Classification is derived across the merged editions, so it is
+             # stored explicitly rather than left to be re-parsed out of the
+             # authority response. No schema change: db.claims.raw is JSON.
+             json.dumps({"ddc": c.get("ddc"), "lcc": c.get("lcc"),
+                         "subjects": c.get("subjects"),
+                         "n_editions": c.get("n_editions", 1),
+                         "authority": c.get("raw")}, default=str))).lastrowid
         if claim_id is None:
             claim_id = cid                          # candidates arrive sorted
     top = cands[0] if cands else {}

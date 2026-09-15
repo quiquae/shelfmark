@@ -312,18 +312,98 @@ def duplicate_report(layers: list[list[Book]], threshold: float = 92.0):
     for i in range(len(flat)):
         for j in range(i + 1, len(flat)):
             (li, bi, a), (lj, bj, c) = flat[i], flat[j]
-            s = _sim(a.title, c.title)
             va, vc = (a.volume or "").strip(), (c.volume or "").strip()
             if va or vc:
                 if _sim(va, vc) < 90:      # same set, different volume
                     continue
+
+            # A prefix match is the signature of a spine cut off by a frame
+            # edge ("Sir Gawain" / "Sir Gawain and the Green Knight"), which
+            # is why _sim scores it 97. Away from an edge it is simply a
+            # different book: "George Eliot" is a prefix of "George Eliot A
+            # Life" and the two are not copies of each other.
+            if _prefix_only(a.title, c.title) and not (_at_edge(a) or _at_edge(c)):
+                continue
+            s = _sim(a.title, c.title)
             if s >= threshold and (li, bi, lj, bj) not in seen:
                 seen.add((li, bi, lj, bj))
-                out.append({"a": f"L{li}#{bi}", "b": f"L{lj}#{bj}",
+                adjacent = li == lj and abs(bi - bj) == 1
+                # Ranked, not filtered. Nothing is dropped -- but an
+                # unranked list of 248 claims, most of them weak, sends a
+                # cataloguer to check the wrong thing and is read as the tool
+                # crying wolf. Confidence says which ones to open first.
+                #
+                # confirmed: the standard the one shelf-verified duplicate met
+                #   -- a second copy of Carlyle vol. 34, with the volume
+                #   marking READ on both spines.
+                # likely: no volume marking, but adjacent. A real second copy
+                #   is nearly always shelved beside the first.
+                # possible: no volume marking and not adjacent. Just as likely
+                #   two volumes of a set whose numbering could not be read,
+                #   which is why these also appear in unmarked_set_report,
+                #   where the action is "read the volume numbers".
+                if va and vc:
+                    conf = "confirmed"
+                elif adjacent:
+                    conf = "likely"
+                else:
+                    conf = "possible"
+                out.append({"kind": "duplicate", "confidence": conf,
+                            "a": f"L{li}#{bi}", "b": f"L{lj}#{bj}",
                             "title_a": a.title, "title_b": c.title,
                             "volume": va or None,
                             "similarity": round(s, 1),
-                            "adjacent": li == lj and abs(bi - bj) == 1})
+                            "adjacent": adjacent})
+    out.sort(key=lambda d: {"confirmed": 0, "likely": 1, "possible": 2}[d["confidence"]])
+    return out
+
+
+def _at_edge(book: "Book") -> bool:
+    return any(getattr(r, "at_edge", False) for r in book.reads)
+
+
+def _prefix_only(a: str | None, b: str | None) -> bool:
+    """True when the two titles match only because one is a prefix of the
+    other -- the case _sim deliberately scores 97."""
+    na, nb = _norm(a or ""), _norm(b or "")
+    if not na or not nb or na == nb:
+        return False
+    short, long = (na, nb) if len(na) <= len(nb) else (nb, na)
+    return len(short) >= 6 and long.startswith(short)
+
+
+def _unmarked_sets(flat, min_members: int = 2):
+    """Titles carried by several books where no copy has a readable volume
+    marking. Yields (normalised_title, [members])."""
+    by_title = {}
+    for item in flat:
+        by_title.setdefault(_norm(item[2].title), []).append(item)
+    for t, members in by_title.items():
+        if len(members) >= min_members and not any(
+                (b.volume or "").strip() for _, _, b in members):
+            yield t, members
+
+
+def unmarked_set_report(layers: list[list[Book]], min_members: int = 2):
+    """Probable multi-volume sets whose volume numbering could not be read.
+
+    This is a more useful finding than the duplicate flag it replaces: the
+    action is "go and read the volume numbers on these N spines", and until
+    someone does, their order within the set is unverified. Reporting them as
+    duplicate copies instead sent a cataloguer to check the wrong thing."""
+    flat = [(li, bi, b) for li, layer in enumerate(layers)
+            for bi, b in enumerate(layer) if b.title]
+    out = []
+    for t, members in _unmarked_sets(flat, min_members):
+        rows = sorted((li, bi) for li, bi, _ in members)
+        out.append({"kind": "unmarked_set",
+                    "title": members[0][2].title,
+                    "n_members": len(members),
+                    "locations": [f"L{li}#{bi}" for li, bi in rows],
+                    "contiguous": all(
+                        rows[k][0] == rows[0][0] and rows[k][1] == rows[0][1] + k
+                        for k in range(len(rows)))})
+    out.sort(key=lambda d: d["n_members"], reverse=True)
     return out
 
 

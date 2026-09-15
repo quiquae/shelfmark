@@ -75,6 +75,17 @@ with tempfile.TemporaryDirectory() as td:
           bool(recs[1]["952"].get("z")), str(recs[1]["952"].get("z")))
     check("provenance is in 500",
           "shelf photograph" in recs[0]["500"]["a"], recs[0]["500"]["a"][:40])
+    # classification is authority data and gets its own MARC fields
+    dew = [dict(RECS[0], ddc="823.912", lcc="PR6045",
+                subjects=["Fiction", "English literature"])]
+    export.to_marc(td / "d.mrc", dew)
+    dr = list(MARCReader((td / "d.mrc").open("rb")))[0]
+    check("Dewey goes to 082", dr["082"]["a"] == "823.912", str(dr.get_fields("082")))
+    check("LC class goes to 050", dr["050"]["a"] == "PR6045", str(dr.get_fields("050")))
+    check("subjects go to 650", len(dr.get_fields("650")) == 2,
+          str(len(dr.get_fields("650"))))
+    check("shelf order is still in 952$o, not overwritten by Dewey",
+          dr["952"].get("o") == "S1-TOP/001", str(dr["952"].get("o")))
     # pymarc's Record.__getitem__ raises KeyError for an absent field rather
     # than returning None, so absence is asserted with get_fields().
     check("no ISBN invented for an unread spine",
@@ -114,6 +125,68 @@ check("a close second candidate downgrades the tier",
       authorities.tier_for([0.97, 0.94]) == "red",
       authorities.tier_for([0.97, 0.94]))
 check("nothing found is black", authorities.tier_for([]) == "black")
+
+print("\n=== 5b. editions collapse before tiering ===")
+EDITIONS = [
+    {"title": "To the Lighthouse", "authors": "Virginia Woolf", "score": 1.0,
+     "ddc": None, "isbn13": None, "year": None, "publisher": None, "lcc": "PR6045"},
+    {"title": "To the Lighthouse", "authors": "Woolf, Virginia", "score": 0.99,
+     "ddc": "823", "isbn13": None, "year": "1927", "publisher": "Hogarth", "lcc": None},
+    {"title": "To the Lighthouse", "authors": "Virginia Woolf", "score": 0.98,
+     "ddc": None, "isbn13": None, "year": None, "publisher": None, "lcc": None},
+    {"title": "Tim to the Lighthouse", "authors": "Edward Ardizzone", "score": 0.55,
+     "ddc": None, "isbn13": None, "year": None, "publisher": None, "lcc": None},
+]
+col = authorities.collapse_editions(EDITIONS)
+check("three editions of one work collapse", len(col) == 2, str(len(col)))
+check("the best-scoring edition represents the work",
+      col[0]["score"] == 1.0, str(col[0]["score"]))
+check("edition count is kept, not discarded",
+      col[0]["n_editions"] == 3, str(col[0].get("n_editions")))
+check("classification is salvaged from a sibling edition",
+      col[0].get("ddc") == "823", str(col[0].get("ddc")))
+check("a genuinely different work stays separate",
+      col[1]["title"] == "Tim to the Lighthouse", col[1]["title"])
+check("editions no longer read as ambiguity",
+      authorities.tier_for_candidates(EDITIONS) == "amber",
+      authorities.tier_for_candidates(EDITIONS))
+check("uncollapsed, the same list looked ambiguous",
+      authorities.tier_for([c["score"] for c in EDITIONS]) == "red",
+      authorities.tier_for([c["score"] for c in EDITIONS]))
+check("two genuinely rival works are still ambiguous",
+      authorities.tier_for_candidates([
+          {"title": "Troilus and Criseyde", "authors": "Chaucer", "score": 0.97},
+          {"title": "Troilus and Cressida", "authors": "Shakespeare", "score": 0.94},
+      ]) == "red")
+
+print("\n=== 5c. duplicate claims are ranked, not filtered ===")
+from shelfcat.stitch import Read as _R, segment_and_merge, duplicate_report, unmarked_set_report
+def _mk(title, vol=None, at_edge=False, img="a", i=0):
+    return _R(image=img, index=i, title=title, author=None, volume=vol, at_edge=at_edge)
+# a prefix pair away from any frame edge is a different book, not a copy
+ly, _ = segment_and_merge([("a", [_mk("George Eliot", i=0), _mk("Middlemarch", i=1)]),
+                           ("b", [_mk("Zuleika Dobson", i=0), _mk("George Eliot A Life", i=1)])])
+titles = {b.title for l in ly for b in l}
+dup = duplicate_report(ly)
+check("prefix match away from an edge is not a duplicate",
+      not any("George Eliot" in (d["title_a"] or "") for d in dup), str(dup))
+# two copies with the volume read on both is the confirmed standard
+ly2, _ = segment_and_merge([("a", [_mk("Works", "Vol. IV", i=0), _mk("Works", "Vol. IV", i=1)])])
+dup2 = duplicate_report(ly2)
+check("volume read on both sides is confirmed",
+      any(d["confidence"] == "confirmed" for d in dup2), str(dup2))
+# same title, no volume, not adjacent -> still reported, ranked lowest
+ly3, _ = segment_and_merge([("a", [_mk("Summa Theologiae", i=0), _mk("Confessions", i=1)]),
+                            ("b", [_mk("Rule of St Benedict", i=0), _mk("Summa Theologiae", i=1)])])
+dup3 = duplicate_report(ly3)
+check("a weak claim is still reported (nothing is dropped)",
+      any(d["title_a"] == "Summa Theologiae" for d in dup3), str(dup3))
+check("and it is ranked as merely possible",
+      all(d["confidence"] == "possible" for d in dup3
+          if d["title_a"] == "Summa Theologiae"), str(dup3))
+check("an unmarked repeated title becomes a volume-check group",
+      any(u["title"] == "Summa Theologiae" for u in unmarked_set_report(ly3)),
+      str(unmarked_set_report(ly3)))
 
 print("\n=== 6. breaker stops hammering a throttled authority ===")
 authorities.reset_breaker()
