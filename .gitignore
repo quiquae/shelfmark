@@ -1,0 +1,18 @@
+# Institutional data never enters version control (ownership: see CLAUDE.md)
+work/
+out/
+photos/
+*.HEIC
+*.xlsx
+*.mrc
+*.db
+*.db-wal
+*.db-shm
+
+# Archives (the v1.0 zip is kept outside the repo)
+*.zip
+
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

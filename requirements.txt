@@ -1,0 +1,18 @@
+# core imaging + decode
+opencv-python>=4.10
+pillow>=10
+pillow-heif>=0.16        # ingest.py: iPhone HEIC decode (was missing)
+numpy>=1.26
+pyzbar>=0.1.9            # needs system lib: apt install libzbar0  /  brew install zbar
+zxing-cpp>=2.2
+
+# matching + output
+rapidfuzz>=3.9           # stitch.py: overlap alignment (was missing)
+openpyxl>=3.1            # excel.py: workbook writer (was missing)
+
+# dev / test only
+python-barcode>=0.15     # synthetic fixtures for tests
+
+# NOT USED by any module as of v1.0 — kept out deliberately:
+#   requests, isbnlib  -> authorities.py has no HTTP layer implemented
+#   streamlit          -> referred to a cli.py that does not exist
