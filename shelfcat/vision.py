@@ -31,10 +31,25 @@ from .spines import PROMPT, SPINE_SCHEMA, count_check
 
 # Opus 5. Reading thirty spines off one photograph -- rotated text, varying
 # type sizes, gilt on dark cloth -- is the hard part of this pipeline, and a
-# misread here propagates through resolution into the catalogue. A cheaper
-# model is a false economy at roughly a penny a shelf.
-DEFAULT_MODEL = "claude-opus-5"
+# misread here propagates through resolution into the catalogue, where it is
+# indistinguishable from a fact. At roughly a penny a book a cheaper model is
+# a false economy; SHELFCAT_VISION_MODEL overrides it if you disagree.
+DEFAULT_MODEL = os.environ.get("SHELFCAT_VISION_MODEL", "claude-opus-5")
 MAX_TOKENS = 16000
+
+# Effort is the cost lever, and it is the one worth knowing about. Thinking
+# tokens bill as OUTPUT, so on a 1500x931 crop the ~2,300 input tokens cost
+# about a cent while the thinking can cost five or ten times that. Measured
+# against real crop dimensions at Opus 5 rates ($5/$25 per MTok):
+#
+#   effort        per shelf (2 crops)   79 frames / 1,017 books
+#   low/medium    ~$0.07                ~$5
+#   high (default) ~$0.17               ~$13
+#
+# Roughly a penny a book either way. Turn it down for a large collection of
+# clearly-printed modern spines; leave it up for gilt on dark Victorian cloth,
+# which is where the reading is actually hard.
+DEFAULT_EFFORT = os.environ.get("SHELFCAT_VISION_EFFORT", "high")
 
 # Anything wider than this the viewer downsamples anyway, and crops.py has
 # already scaled to VIEW_W. Guard against someone handing us a 24MP frame.
@@ -117,7 +132,8 @@ def _as_transcript(spine, index):
     }
 
 
-def transcribe(crop_path, *, model=None, client=None, geometric_count=None):
+def transcribe(crop_path, *, model=None, client=None, geometric_count=None,
+               effort=None):
     """Transcribe one crop. Returns spines in transcript shape, left to right.
 
     `geometric_count`, when an independent count of spine regions is
@@ -135,7 +151,8 @@ def transcribe(crop_path, *, model=None, client=None, geometric_count=None):
             model=model or DEFAULT_MODEL,
             max_tokens=MAX_TOKENS,
             thinking={"type": "adaptive"},
-            output_config={"format": {"type": "json_schema", "schema": _schema()}},
+            output_config={"format": {"type": "json_schema", "schema": _schema()},
+                           "effort": effort or DEFAULT_EFFORT},
             messages=[{"role": "user", "content": [
                 _image_block(crop_path),
                 {"type": "text", "text": PROMPT},

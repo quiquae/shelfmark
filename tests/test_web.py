@@ -184,6 +184,9 @@ with tempfile.TemporaryDirectory() as td:
     check("the request uses Opus 5", sent["model"] == "claude-opus-5", sent["model"])
     check("thinking is adaptive", sent["thinking"] == {"type": "adaptive"},
           str(sent.get("thinking")))
+    check("effort is sent, because it is the cost lever",
+          sent["output_config"].get("effort") in ("low","medium","high","xhigh","max"),
+          str(sent["output_config"].get("effort")))
     check("the response is schema-constrained",
           sent["output_config"]["format"]["type"] == "json_schema",
           str(sent.get("output_config", {}).get("format", {}).get("type")))

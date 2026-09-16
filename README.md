@@ -41,7 +41,21 @@ whole shelf without anyone noticing.
 
 The backend returns a `bbox` for each spine — `[x0, y0, x1, y1]` as fractions
 of the crop — so the review screen shows the **exact** spine rather than
-estimating its position from an ordinal. Roughly a penny a shelf.
+estimating its position from an ordinal.
+
+**What it costs, and whose key.** The call bills *your* Anthropic account via
+`ANTHROPIC_API_KEY`. Measured against the crop dimensions this pipeline
+actually produces (1500 × 931) at Opus 5 rates:
+
+| effort | per shelf (1 frame, 2 crops) | 1,017-volume library |
+|---|---|---|
+| `low` / `medium` | ~$0.07 | ~$5 |
+| `high` (default) | ~$0.17 | ~$13 |
+
+About **a penny a book**. Thinking tokens bill as output, so effort is the
+lever, not the model: `SHELFCAT_VISION_EFFORT=medium` roughly halves it, and
+`SHELFCAT_VISION_MODEL` overrides the model if you want to go further. For
+context, ALA puts in-house cataloguing at $15–17 *per title*.
 
 ### To install it as an app
 
