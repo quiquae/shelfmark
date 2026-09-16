@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}shelfmark{% endblock %}</title>
 <link rel="stylesheet" href="/static/app.css">
+
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#1b1a17">
+<link rel="icon" href="/static/icons/favicon.png" sizes="64x64">
+<!-- iOS reads the manifest on recent versions and these two on older ones;
+     both are cheap and the older path is still common on library iPads. -->
+<link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="shelfmark">
 </head>
 <body>
 <header>
@@ -15,5 +26,12 @@
 {% block content %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}
+<script>
+  // Registered from /sw.js, not /static/sw.js: a worker's scope is its own
+  // directory, so one served from /static/ could never control the app.
+  if ("serviceWorker" in navigator) {
+    addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+  }
+</script>
 </body>
 </html>

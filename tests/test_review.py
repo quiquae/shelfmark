@@ -246,6 +246,36 @@ with TestClient(webapp.app) as client:
           "attachment" in csvr.headers.get("content-disposition", ""),
           csvr.headers.get("content-disposition", ""))
 
+    print("\n=== 6c. it installs as an app ===")
+    sw = client.get("/sw.js")
+    check("the service worker is served from the root scope",
+          sw.status_code == 200, str(sw.status_code))
+    check("and declares that scope",
+          sw.headers.get("service-worker-allowed") == "/",
+          str(sw.headers.get("service-worker-allowed")))
+    man = client.get("/static/manifest.webmanifest")
+    check("the manifest is served", man.status_code == 200, str(man.status_code))
+    mj = json.loads(man.text)
+    check("it launches without browser chrome", mj["display"] == "standalone",
+          mj["display"])
+    check("it has a maskable icon for Android",
+          any(i.get("purpose") == "maskable" for i in mj["icons"]))
+    for icon in mj["icons"]:
+        r = client.get(icon["src"])
+        check(f"icon {icon['sizes']} exists", r.status_code == 200, icon["src"])
+    check("iOS gets a touch icon",
+          client.get("/static/icons/icon-180.png").status_code == 200)
+    home = client.get("/").text
+    check("pages link the manifest", 'rel="manifest"' in home)
+    check("pages register the worker", "serviceWorker" in home)
+    # The important negative: a cached review screen would show a librarian a
+    # record they have already settled.
+    body = sw.text
+    check("the worker caches only /static/", "/static/" in body)
+    check("it never caches job or collection pages",
+          "/job/" not in body.replace("/job/{", "") or "startsWith" in body)
+    check("it excludes the per-record spine crops", "/spine/" in body)
+
     print("\n=== 7. the queue drains and the screen says so ===")
     guard = 0
     while guard < 200:

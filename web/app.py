@@ -70,6 +70,25 @@ def db_con():
         c.close()
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    """Served from the root so the worker's scope covers the whole app.
+
+    A service worker can only control URLs under its own path, so one served
+    from /static/sw.js would be scoped to /static/ and control nothing that
+    matters."""
+    return FileResponse(ROOT / "static" / "sw.js",
+                        media_type="application/javascript",
+                        headers={"Service-Worker-Allowed": "/",
+                                 "Cache-Control": "no-cache"})
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(ROOT / "static" / "manifest.webmanifest",
+                        media_type="application/manifest+json")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     with db_con() as c:
@@ -294,6 +313,7 @@ def review_one(request: Request, job_id: str, evidence_id: int):
             else jobs.review_counts(c, job_id)
         coll = jobs.get_collection(c, cid) if cid else None
         qmap = {q["evidence_id"]: q["job_id"] for q in queue}
+        _p, spine_meta = jobs.spine_window(job["work_dir"], rec["spine"]["reads"])
     ids = [q["evidence_id"] for q in queue]
     # The current record may already be reviewed (arrived via a back button),
     # in which case it is not in the queue and there is no "n of m" for it.
@@ -306,6 +326,7 @@ def review_one(request: Request, job_id: str, evidence_id: int):
         "n": (idx + 1) if idx is not None else None, "of": len(ids),
         "next_id": nxt, "next_job": qmap.get(nxt, job_id),
         "prev_id": prev, "prev_job": qmap.get(prev, job_id),
+        "spine_exact": not spine_meta.get("approximate", True),
         "review_below": export.REVIEW_BELOW})
 
 

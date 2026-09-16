@@ -18,8 +18,43 @@ SHELFCAT_FAKE_VISION=1 .venv/bin/uvicorn web.app:app --port 8031
 ```
 
 `SHELFCAT_FAKE_VISION=1` runs the whole loop with three hardcoded spines per
-crop, so you can see it work before wiring in a vision backend. Without it,
-`spines.read_spine()` raises — a stub must never quietly become the product.
+crop, so you can see it work with no API key and no network.
+
+### To read real photographs
+
+```bash
+pip install -e '.[vision]'
+export ANTHROPIC_API_KEY=sk-ant-...        # or: ant auth login
+uvicorn web.app:app --port 8031            # no fake-vision flag
+```
+
+`shelfcat/vision.py` sends each crop to Claude Opus 5 with the prompt and the
+schema already in `shelfcat/spines.py` — one prompt, one schema, no second
+copy. The schema has **no year field and no ISBN field on purpose**: a model
+asked for them invents plausible, wrong ones, and a 1954 Chaucer and a 2008
+Chaucer have near-identical spines. Those can only enter the catalogue from an
+authority record matched on the visible text, or from a decoded barcode.
+
+A failure raises rather than returning an empty list. An empty list is
+indistinguishable from "this crop had no books on it", which would drop a
+whole shelf without anyone noticing.
+
+The backend returns a `bbox` for each spine — `[x0, y0, x1, y1]` as fractions
+of the crop — so the review screen shows the **exact** spine rather than
+estimating its position from an ordinal. Roughly a penny a shelf.
+
+### To install it as an app
+
+Open the site on a phone and use **Add to Home Screen**. It then launches
+fullscreen with no browser chrome, from its own icon, and the shell is cached
+so it opens instantly.
+
+Nothing else is cached, deliberately. A stale `/job/` or `/collection/` page
+would show a librarian a record they have already reviewed, or a queue that
+has already drained, and they would review it twice — a catalogue is not a
+document you want a stale copy of. Offline sync is out of scope for the same
+reason: uploading and resolving both need the network, and queuing work that
+silently never happens is worse than saying so.
 
 ### What it does that other tools do not
 

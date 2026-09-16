@@ -106,12 +106,115 @@ check("the illegible spine survives the rejoin",
 single = spines.transcribe_frame("IMG_1", ["p1.jpg"], fake=True)
 check("one crop needs no seam", single["crop_seams"] == [], str(single["crop_seams"]))
 
-print("\n=== 4. read_spine refuses to guess ===")
-try:
-    spines.read_spine("x.jpg", fake=False)
-    check("real vision path raises", False, "it returned instead")
-except NotImplementedError:
-    check("real vision path raises NotImplementedError", True)
+print("\n=== 4. the vision backend maps the schema, and never invents ===")
+import json as _json
+import types
+from shelfcat import vision
+
+
+class _Block:
+    type = "text"
+
+    def __init__(self, text):
+        self.text = text
+
+
+class _Resp:
+    stop_reason = "end_turn"
+    stop_details = None
+
+    def __init__(self, payload):
+        self.content = [_Block(_json.dumps(payload))]
+
+
+class _StubClient:
+    """Stands in for anthropic.Anthropic. Records the request so the test can
+    assert what was actually sent, not only what came back."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.sent = None
+        self.messages = types.SimpleNamespace(create=self._create)
+
+    def _create(self, **kw):
+        self.sent = kw
+        return _Resp(self.payload)
+
+
+PAYLOAD = {"spines": [
+    {"position": 2, "bbox": [0.30, 0.0, 0.44, 1.0], "title_text": "The Canterbury Tales",
+     "author_text": "Chaucer", "publisher_text": "Penguin", "volume_text": None,
+     "script": "latin", "orientation": "vertical", "legibility": "clear",
+     "item_type": "book", "notes": None},
+    {"position": 1, "bbox": [0.10, 0.0, 0.29, 1.0], "title_text": "Beowulf",
+     "author_text": None, "publisher_text": None, "volume_text": "VOL. II",
+     "script": "latin", "orientation": "vertical", "legibility": "clear",
+     "item_type": "book", "notes": None},
+    {"position": 3, "bbox": [0.45, 0.0, 0.58, 1.0], "title_text": "Piers Plowman",
+     "author_text": "Langland", "publisher_text": None, "volume_text": None,
+     "script": "latin", "orientation": "vertical", "legibility": "illegible",
+     "item_type": "book", "notes": "gilt worn away"},
+]}
+
+with tempfile.TemporaryDirectory() as td:
+    img = pathlib.Path(td) / "crop.jpg"
+    from PIL import Image as _Im
+    _Im.new("RGB", (400, 200), (30, 30, 30)).save(img, "JPEG")
+    stub = _StubClient(PAYLOAD)
+    got = vision.transcribe(img, client=stub)
+
+    check("every spine in the response survives", len(got) == 3, str(len(got)))
+    check("they come back in left-to-right order, not response order",
+          [g["title"] for g in got][:2] == ["Beowulf", "The Canterbury Tales"],
+          str([g["title"] for g in got]))
+    check("positions are renumbered 1..n", [g["i"] for g in got] == [1, 2, 3])
+    check("schema field names are mapped to the transcript shape",
+          got[1]["title"] == "The Canterbury Tales" and got[1]["author"] == "Chaucer",
+          str(got[1]))
+    check("the volume marking is carried", got[0]["volume"] == "VOL. II", str(got[0]))
+    check("bbox is carried through for an exact crop",
+          got[1]["bbox"] == [0.30, 0.0, 0.44, 1.0], str(got[1]["bbox"]))
+    check("an illegible spine keeps its row with a null title",
+          got[2]["title"] is None and got[2]["legibility"] == "illegible", str(got[2]))
+    check("its note survives", got[2]["note"] == "gilt worn away", str(got[2]["note"]))
+    check("no year is ever invented", all("year" not in g for g in got))
+    check("no ISBN is ever invented", all("isbn" not in g for g in got))
+
+    sent = stub.sent
+    check("the request uses Opus 5", sent["model"] == "claude-opus-5", sent["model"])
+    check("thinking is adaptive", sent["thinking"] == {"type": "adaptive"},
+          str(sent.get("thinking")))
+    check("the response is schema-constrained",
+          sent["output_config"]["format"]["type"] == "json_schema",
+          str(sent.get("output_config", {}).get("format", {}).get("type")))
+    check("the schema sent is the one in spines.py",
+          "spines" in sent["output_config"]["format"]["schema"]["properties"])
+    check("SPINE_SCHEMA itself was not mutated",
+          "additionalProperties" not in spines.SPINE_SCHEMA, "it was mutated")
+    check("the image is sent as base64",
+          sent["messages"][0]["content"][0]["source"]["type"] == "base64")
+    check("the prompt sent is the one in spines.py",
+          sent["messages"][0]["content"][1]["text"] == spines.PROMPT)
+
+    print("\n    -- failures are loud, never an empty shelf --")
+    for label, resp_kw in (("a refusal", {"stop_reason": "refusal"}),
+                           ("a truncated response", {"stop_reason": "max_tokens"})):
+        bad = _StubClient(PAYLOAD)
+
+        def _mk(**kw):
+            r = _Resp(PAYLOAD)
+            for k, v in resp_kw.items():
+                setattr(r, k, v)
+            return r
+        bad.messages = types.SimpleNamespace(create=_mk)
+        try:
+            vision.transcribe(img, client=bad)
+            check(f"{label} raises", False, "it returned spines instead")
+        except vision.VisionError:
+            check(f"{label} raises VisionError, not an empty list", True)
+
+    check("the fake path still needs no key and no network",
+          len(spines.read_spine(img, fake=True)) == 3)
 
 print("\n=== 5. the resolver's author is a score, not a filter ===")
 check("an author that matches nothing must not zero the query",

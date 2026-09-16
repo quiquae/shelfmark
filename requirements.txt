@@ -2,6 +2,10 @@
 # truth. This file exists so `pip install -r requirements.txt` still works.
 -e .
 
-# Barcode decoding is an optional extra because it needs a system library:
+# The vision backend is an optional extra, so the package installs and the
+# pipeline runs with SHELFCAT_FAKE_VISION=1 on a machine with no API key:
+#   pip install -e '.[vision]'   then set ANTHROPIC_API_KEY
+#
+# Barcode decoding is optional because it needs a system library:
 #   brew install zbar   /   apt install libzbar0
 # then:  pip install -e '.[barcodes]'

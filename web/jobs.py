@@ -359,18 +359,18 @@ def shelf_work(con, job_id=None, *, collection_id=None):
 def spine_window(work_dir, reads, neighbours: int = 1):
     """Render a slice of the band crop containing one spine.
 
-    There are no per-spine coordinates anywhere in this system: the 79 real
-    transcripts carry an ordinal and nothing else. So the position is
-    estimated as (ordinal + 0.5) / n across the crop the spine was read from
-    -- a linear assumption whose error grows with how much spine widths vary
-    on the shelf.
+Two paths, and the caller is told which one it got.
 
-    The window is therefore cut wide enough to include the neighbours, and the
-    caller labels it approximate. Showing a tight crop that is confidently one
-    spine off is worse than showing three spines and saying which to look at.
+    With a `bbox` -- [x0, y0, x1, y1] fractions of the crop, which vision.py
+    returns -- the spine's position is known, and the window is that box
+    widened by a spine-width so the neighbours stay visible.
 
-    Emitting `bbox` from a real read_spine replaces this estimate with the
-    truth -- spines.SPINE_SCHEMA already requires it.
+    Without one -- the 79 transcripts of 1 Sep 2026 carry an ordinal and
+    nothing else -- the position is estimated as (ordinal + 0.5) / n across
+    the crop, an assumption whose error grows with how much spine widths vary.
+    That window is cut wide enough to contain the neighbours and is reported
+    as `approximate`, because a tight crop confidently one spine off is worse
+    than three spines and an honest caption.
     """
     from PIL import Image
 
@@ -406,18 +406,33 @@ def spine_window(work_dir, reads, neighbours: int = 1):
             pos = 0
         n = max(1, len(peers))
 
-        out = work / "spines" / f"{frame}_{index}_{neighbours}.jpg"
+        # A real backend returns bbox as [x0, y0, x1, y1] fractions of the
+        # crop, in which case the spine's location is known and there is
+        # nothing to estimate. The window is widened by one spine-width so the
+        # reviewer still sees what sits either side, but it is centred on the
+        # truth.
+        bbox = target.get("bbox")
+        exact = (isinstance(bbox, (list, tuple)) and len(bbox) == 4
+                 and all(isinstance(v, (int, float)) for v in bbox)
+                 and bbox[2] > bbox[0])
+
+        out = work / "spines" / f"{frame}_{index}_{neighbours}_{'x' if exact else 'e'}.jpg"
+        meta = {"frame": frame, "pos": pos + 1, "of": n, "approximate": not exact}
         if out.exists():
-            return out, {"frame": frame, "pos": pos + 1, "of": n,
-                         "approximate": True}
+            return out, meta
         im = Image.open(crop)
-        lo = max(0.0, (pos - neighbours) / n)
-        hi = min(1.0, (pos + 1 + neighbours) / n)
-        box = (int(lo * im.width), 0, max(int(hi * im.width), int(lo * im.width) + 8),
-               im.height)
+        if exact:
+            pad = (bbox[2] - bbox[0]) * max(0, neighbours)
+            lo = max(0.0, bbox[0] - pad)
+            hi = min(1.0, bbox[2] + pad)
+        else:
+            lo = max(0.0, (pos - neighbours) / n)
+            hi = min(1.0, (pos + 1 + neighbours) / n)
+        box = (int(lo * im.width), 0,
+               max(int(hi * im.width), int(lo * im.width) + 8), im.height)
         out.parent.mkdir(parents=True, exist_ok=True)
         im.crop(box).save(out, "JPEG", quality=88, optimize=True)
-        return out, {"frame": frame, "pos": pos + 1, "of": n, "approximate": True}
+        return out, meta
     return None, {}
 
 

@@ -29,7 +29,8 @@
     <figcaption>
       {% if rec.spine.reads %}
         Spine {{ rec.spine.reads[0].index }} in {{ rec.spine.frames|join(', ') }}
-        · <span class="dim">position approximate — shown with its neighbours</span>
+        {% if spine_exact %}· <span class="dim">shown with its neighbours</span>
+        {% else %}· <span class="dim">position approximate — shown with its neighbours</span>{% endif %}
       {% else %}<span class="dim">no crop available</span>{% endif %}
     </figcaption>
   </figure>

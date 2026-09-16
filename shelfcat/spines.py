@@ -20,8 +20,16 @@ SPINE_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "position":     {"type": "integer", "description": "1-based, left to right"},
+                    # [x0, y0, x1, y1] as FRACTIONS of this crop, 0..1, origin
+                    # top-left. Fractions rather than pixels because crops.py
+                    # scales every crop to a viewing width, so pixel
+                    # coordinates would be meaningless against the source
+                    # frame. Four unlabelled numbers is not a convention.
                     "bbox":         {"type": "array", "items": {"type": "number"},
-                                     "minItems": 4, "maxItems": 4},
+                                     "minItems": 4, "maxItems": 4,
+                                     "description": "[x0, y0, x1, y1] as fractions "
+                                                    "of the image, 0-1, origin "
+                                                    "top-left"},
                     "title_text":   {"type": ["string", "null"], "description": "verbatim, as printed"},
                     "author_text":  {"type": ["string", "null"], "description": "verbatim, as printed"},
                     "publisher_text": {"type": ["string", "null"]},
@@ -64,6 +72,10 @@ Rules, in order of importance:
    schema on purpose; they cannot be read reliably from a spine.
 6. If part of a spine is hidden behind another object, transcribe what is
    visible and set `legibility` to "partial".
+7. `bbox` is [x0, y0, x1, y1] as fractions of the image between 0 and 1, with
+   the origin at the top left: x0 is the left edge of the spine, x1 the right.
+   Give it for every spine, including illegible ones -- it is what lets a
+   human be shown the exact book you are describing.
 
 Return JSON matching the provided schema and nothing else.
 """
@@ -101,8 +113,10 @@ def count_check(vlm_spines, geometric_count):
 # and an ordinal ("spine 3 of 14"), not an individual spine image. Emitting
 # `bbox` from the real implementation is what unlocks per-spine crops.
 #
-# There is no real implementation here on purpose. Supply one; do not let a
-# stub quietly become the product.
+# The real implementation lives in vision.py, which calls Claude with the
+# PROMPT and SPINE_SCHEMA above -- one prompt, one schema, no second copy. The
+# fake path stays because it lets the whole pipeline be exercised, and tested,
+# with no API key and no network.
 # ---------------------------------------------------------------------------
 import os
 import pathlib
@@ -139,11 +153,8 @@ def read_spine(crop_path, *, fake: bool | None = None) -> list[dict]:
     """
     if fake if fake is not None else fake_vision_enabled():
         return [dict(s) for s in _FAKE_SPINES]
-    raise NotImplementedError(
-        "read_spine has no real implementation. Supply a vision backend that "
-        f"returns the transcript shape, or set {FAKE_VISION_ENV}=1 to run the "
-        "pipeline end to end with three hardcoded spines."
-    )
+    from .vision import transcribe
+    return transcribe(crop_path)
 
 
 def _as_read(frame, i, spine):

@@ -10,4 +10,4 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
 the GNU Affero General Public License for more details, in the LICENSE file
 alongside this one or at <https://www.gnu.org/licenses/>.
 """
-__version__ = "1.1.0"
+__version__ = "1.2.0"
