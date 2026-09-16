@@ -7,7 +7,8 @@ acceptable and neither is inheriting it.
     python tests/calibrate_threshold.py [labels.csv]
 
 The CSV needs three columns: score, correct (1/0), and note. tests/labels.csv
-is a starter set of 98 real spine/candidate pairs from the UATX run, labelled
+is a starter set of 98 real spine/candidate pairs from the reference run,
+labelled
 by bibliographic judgement -- "does this candidate denote the same WORK as the
 spine" -- and NOT by physical verification. Replace it with labels made at the
 shelf and rerun; that is a stronger set and the numbers will move.

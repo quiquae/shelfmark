@@ -77,7 +77,7 @@ COL = {name: chr(ord("A") + i) for i, name in enumerate(CAT_COLS)}
 
 
 def build(path, layers, frames_meta, anomalies, duplicates, suspect_joins, joins,
-          project="UATX library", assignments=None, location_warnings=None,
+          project="Library", assignments=None, location_warnings=None,
           row_decisions=None):
     wb = Workbook()
 

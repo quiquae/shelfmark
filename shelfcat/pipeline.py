@@ -77,7 +77,7 @@ def load_transcripts(transcript_dir):
     return out
 
 
-def catalogue(transcript_dir, manifest_path, xlsx_path, project="UATX library",
+def catalogue(transcript_dir, manifest_path, xlsx_path, project="Library",
               rows_per_shelf=3, overrides=None, layer_offset=0):
     frames = load_transcripts(transcript_dir)
     layers, joins = segment_and_merge(frames)

@@ -1,7 +1,7 @@
 # shelfmark / shelfcat — working rules
 
 Photo-to-catalogue pipeline for a physical library. A validated run over the
-UATX library exists: 79 frames, 1,282 raw spine reads, 1,017 unique books,
+private library exists: 79 frames, 1,282 raw spine reads, 1,017 unique books,
 37 shelf rows. A blind re-read of IMG_2152 matched a manual transcription
 14/14 on title and volume.
 
@@ -141,7 +141,8 @@ count does reproduce exactly.
 7. Ask before adding a dependency. Name it, say what it replaces, and why
    hand-rolling is worse.
 8. No institutional data in the repo. `work/` is gitignored and that is
-   deliberate — the licence is unchosen and UATX ownership is unresolved.
+   deliberate: the photographs and transcripts are of a private collection.
+   The code is licensed AGPL-3.0-or-later; ownership is settled.
 9. If unsure whether an API behaves as you think, say so instead of writing
    code that assumes it. A blank with an explanation beats a confident guess.
 
