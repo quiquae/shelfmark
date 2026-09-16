@@ -1,0 +1,52 @@
+# systemd unit for shelfmark. Copy to /etc/systemd/system/shelfmark.service
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now shelfmark
+#   journalctl -u shelfmark -f
+#
+# The API key is NOT in this file. It lives in /etc/shelfmark.env, which is
+# root-owned and 0600, because this file is world-readable and belongs in
+# version control while the key does not.
+
+[Unit]
+Description=shelfmark — photograph a shelf, get an ordered catalogue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=shelfmark
+Group=shelfmark
+WorkingDirectory=/opt/shelfmark
+
+# SHELFMARK_ACCESS_CODE, ANTHROPIC_API_KEY, SHELFCAT_VISION_EFFORT
+EnvironmentFile=/etc/shelfmark.env
+Environment=SHELFMARK_DB=/var/lib/shelfmark/shelfmark.db
+Environment=SHELFMARK_WORK=/var/lib/shelfmark/jobs
+Environment=SHELFMARK_HTTPS=1
+
+# Bound to localhost on purpose: Caddy terminates TLS in front of it. Nothing
+# here should ever be reachable directly.
+ExecStart=/opt/shelfmark/.venv/bin/shelfmark --host 127.0.0.1 --port 8031
+
+Restart=always
+RestartSec=3
+# One worker thread does the image work, so a restart mid-job is the failure
+# to plan for: the job is left marked running. It is picked up as stale rather
+# than silently lost — see the README.
+TimeoutStopSec=30
+
+# The photographs are the only thing it needs to write.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/shelfmark
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

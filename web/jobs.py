@@ -783,6 +783,15 @@ def _run(con, job):
 
     layers, assignments = res["layers"], res["assignments"]
     n_books = sum(len(l) for l in layers)
+    # A job that finds nothing must fail, not succeed with "0 volume(s)",
+    # which reads like it worked. The usual cause is a photograph the shelf is
+    # not actually in, or one taken end-on down a row.
+    if not n_books:
+        raise RuntimeError(
+            f"no book spines were found in {len(manifest)} photograph(s). "
+            f"Is the shelf square-on and filling the frame? A photograph taken "
+            f"down the length of a row, or of a closed cupboard, gives nothing "
+            f"to read.")
     # Recorded before resolution so a later batch can offset from it even if
     # this job fails part-way through.
     _set(con, jid, n_layers=len(layers))
@@ -871,6 +880,44 @@ def run_once(db_path):
         con.close()
 
 
+def recover_stale(con):
+    """Deal with jobs the process was killed in the middle of.
+
+    A deploy, a restart or an OOM leaves a row marked `running` that no worker
+    will ever touch again, and the librarian watches a progress bar that has
+    stopped moving with nothing to tell them why.
+
+    Two outcomes, and the split is about not destroying human work:
+
+    - nothing persisted yet: requeue it. Every pipeline stage is independently
+      re-runnable, so this is free.
+    - records already exist: fail it with a reason. Re-running would insert a
+      second set of evidence and double-count the shelf, and the records may
+      already carry review decisions. Re-uploading is the honest fix.
+    """
+    rows = con.execute("SELECT id FROM jobs WHERE state IN ('running')").fetchall()
+    requeued, failed = [], []
+    for r in rows:
+        jid = r["id"]
+        n = con.execute("SELECT COUNT(*) AS n FROM job_items WHERE job_id=?",
+                        (jid,)).fetchone()["n"]
+        if n:
+            _set(con, jid, state="failed",
+                 message=f"interrupted by a restart after {n} volume(s) were "
+                         f"already recorded; re-upload this batch",
+                 finished_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+            failed.append(jid)
+        else:
+            _set(con, jid, state="queued", stage="queued", progress=0.0,
+                 message="requeued after a restart interrupted it")
+            requeued.append(jid)
+    if requeued or failed:
+        print(f"shelfmark: recovered {len(requeued)} interrupted job(s), "
+              f"failed {len(failed)} that had already written records",
+              flush=True)
+    return {"requeued": requeued, "failed": failed}
+
+
 def start_worker(db_path, poll=0.5):
     """One daemon thread holding one connection for its whole life.
 
@@ -881,6 +928,7 @@ def start_worker(db_path, poll=0.5):
     def loop():
         con = connect(db_path)
         try:
+            recover_stale(con)
             while not stop.is_set():
                 try:
                     job = _claim(con)

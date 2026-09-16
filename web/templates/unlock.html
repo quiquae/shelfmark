@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}shelfmark{% endblock %}
+{% block content %}
+<h1>shelfmark</h1>
+<p class="lede">This instance is protected by an access code. Ask whoever runs
+it for the code.</p>
+{% if bad %}<p class="error">That code was not right.</p>{% endif %}
+<form method="post" action="/unlock">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label for="code">Access code</label>
+  <input id="code" name="code" type="password" autocomplete="current-password"
+         autofocus required>
+  <button type="submit">Unlock</button>
+</form>
+{% endblock %}

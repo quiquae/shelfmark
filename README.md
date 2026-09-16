@@ -13,19 +13,19 @@ No install for the librarian, no command line. A phone, a browser, and a URL.
 ```bash
 git clone https://github.com/quiquae/shelfmark && cd shelfmark
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-SHELFCAT_FAKE_VISION=1 .venv/bin/uvicorn web.app:app --port 8031
-# open http://127.0.0.1:8031
+.venv/bin/shelfmark --fake-vision          # open http://127.0.0.1:8031
 ```
 
-`SHELFCAT_FAKE_VISION=1` runs the whole loop with three hardcoded spines per
-crop, so you can see it work with no API key and no network.
+`--fake-vision` runs the whole loop with three hardcoded spines per crop, so
+you can see it work with no API key and no network. Without it, `shelfmark`
+refuses to start rather than accepting photographs it has no way to read.
 
 ### To read real photographs
 
 ```bash
 pip install -e '.[vision]'
 export ANTHROPIC_API_KEY=sk-ant-...        # or: ant auth login
-uvicorn web.app:app --port 8031            # no fake-vision flag
+shelfmark                                  # no --fake-vision
 ```
 
 `shelfcat/vision.py` sends each crop to Claude Opus 5 with the prompt and the
@@ -373,6 +373,79 @@ The older `tests/test_*.py` scripts print `FAIL` but always exit 0, so
 `for t in tests/test_*.py; do python $t; done` reports green over a failing
 suite. `test_stitch.py` currently fails 3 of 33 assertions; see CLAUDE.md.
 
+
+---
+
+## Putting it on a server
+
+One small VPS. The worker is long-lived and CPU-heavy, which is the wrong
+shape for anything that scales to zero, so a plain box beats a platform here:
+**Hetzner CX23 is about €4/month** and has more than enough headroom.
+
+Two files in this repo do the work — `shelfmark.service` and `Caddyfile`.
+Caddy gets its own TLS certificate from Let's Encrypt, so there is no certbot
+and no renewal cron to forget.
+
+```bash
+# on the server, as root
+adduser --system --group --home /opt/shelfmark shelfmark
+apt install -y python3-venv python3-pip caddy libzbar0
+mkdir -p /var/lib/shelfmark && chown shelfmark:shelfmark /var/lib/shelfmark
+
+sudo -u shelfmark git clone https://github.com/quiquae/shelfmark /opt/shelfmark
+cd /opt/shelfmark
+sudo -u shelfmark python3 -m venv .venv
+sudo -u shelfmark .venv/bin/pip install -e '.[vision]'
+
+# the API key and the access code live here, not in the unit file
+cat > /etc/shelfmark.env <<'ENV'
+ANTHROPIC_API_KEY=sk-ant-...
+SHELFMARK_ACCESS_CODE=pick-something-long
+SHELFCAT_VISION_EFFORT=high
+ENV
+chmod 600 /etc/shelfmark.env
+
+cp shelfmark.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now shelfmark
+
+# replace the hostname in the Caddyfile first
+cp Caddyfile /etc/caddy/Caddyfile
+systemctl reload caddy
+```
+
+Then `curl -s https://your.host/healthz` should answer with the version, the
+number of active jobs, and whether vision is real or fake.
+
+**Set `SHELFMARK_ACCESS_CODE` before you expose it.** It is one shared
+passphrase for the instance — not accounts, and not pretending to be. It
+exists because every upload spends money on the vision API, so an open URL is
+an open tap on your key. Local use needs nothing.
+
+### What it does when things go wrong
+
+| | |
+|---|---|
+| not an image, or a truncated one | refused at upload, naming the file and the reason — not discovered deep in the worker |
+| over 40 MB, or 400 MB in one batch | refused, and the rest of the batch still goes through |
+| more than 60 photographs | the first 60 run; the excess is listed, with a note to upload it as a second batch, which continues the shelf numbering |
+| two photographs both called `IMG_0001.jpg` | both kept. They used to overwrite each other, losing a shelf silently |
+| no spines found in any frame | the job **fails** with "is the shelf square-on and filling the frame?", rather than reporting 0 volumes as success |
+| under 500 MB of disk free | refused before writing, because filling the disk can corrupt the database and cost the whole catalogue |
+| the process is killed mid-job | on restart, a job that had written nothing is requeued; one that had already recorded volumes is failed with "re-upload this batch", because re-running would double-count and may overwrite review decisions |
+
+Limits are env-overridable: `SHELFMARK_MAX_FILES`, `SHELFMARK_MAX_TOTAL_MB`.
+If you raise the total, raise `request_body max_size` in the `Caddyfile` to
+match or Caddy will reject the upload before the app can explain why.
+
+### Backups
+
+Everything durable is `SHELFMARK_DB` (one SQLite file). The photographs under
+`SHELFMARK_WORK` are re-derivable in the sense that you still have the
+originals on the phone — the catalogue is not.
+
+```bash
+sqlite3 /var/lib/shelfmark/shelfmark.db ".backup '/root/shelfmark-$(date +%F).db'"
+```
 
 ---
 

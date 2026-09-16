@@ -1,0 +1,41 @@
+# Caddy in front of shelfmark. Copy to /etc/caddy/Caddyfile, replace the
+# hostname, then: sudo systemctl reload caddy
+#
+# Caddy gets a certificate from Let's Encrypt on its own, which is most of why
+# it is the recommendation here: no certbot, no renewal cron, no nginx config
+# language.
+
+shelfmark.example.org {
+	encode zstd gzip
+
+	# A sitting of phone photographs is tens of megabytes and arrives slowly
+	# over hotel wifi. This has to match SHELFMARK_MAX_TOTAL_MB (default 400)
+	# or Caddy rejects the upload before the app can explain why.
+	request_body {
+		max_size 400MB
+	}
+
+	reverse_proxy 127.0.0.1:8031 {
+		# Long enough for a 400 MB upload on a bad connection. The image work
+		# itself happens in a background job, not in the request, so these do
+		# not need to cover transcription.
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+		health_uri /healthz
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+	}
+
+	log {
+		output file /var/log/caddy/shelfmark.log
+		# The paths carry job and collection ids, which are not secrets, but
+		# there is no reason to keep them for a year either.
+		format json
+	}
+}

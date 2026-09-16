@@ -11,7 +11,9 @@ job row, reads job rows, and serves the files the worker wrote.
 import contextlib
 import os
 import pathlib
+import secrets
 import shutil
+from urllib.parse import quote
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
@@ -19,7 +21,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from shelfcat import export
+from shelfcat import __version__, export
 from web import jobs
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -32,7 +34,25 @@ DB = pathlib.Path(os.environ.get("SHELFMARK_DB", ROOT / "work" / "shelfmark.db")
 # A phone photograph of a shelf is 2-5 MB. 40 MB leaves room for a 48 MP
 # frame while still refusing an accidental video upload.
 MAX_BYTES = 40 * 1024 * 1024
+# One sitting is a few shelves. Past this it is a different workflow -- a bulk
+# import someone should be doing in batches so they can review as they go --
+# and the excess is reported, not silently truncated.
+MAX_FILES = int(os.environ.get("SHELFMARK_MAX_FILES", "60"))
+MAX_TOTAL_BYTES = int(os.environ.get("SHELFMARK_MAX_TOTAL_MB", "400")) * 1024 * 1024
+# Keep this much room spare. Filling the disk mid-job corrupts the SQLite
+# database, which loses the catalogue, not just the upload.
+MIN_FREE_BYTES = 500 * 1024 * 1024
 ALLOWED_SUFFIX = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff"}
+
+# An optional shared passphrase. Not accounts, not multi-tenancy -- one code
+# for the whole instance, off unless you set it.
+#
+# It exists because the vision backend spends real money per upload, so a
+# public URL with no gate is an open tap on the owner's API key. Local use
+# needs nothing; anything reachable from the internet needs this.
+ACCESS_CODE = os.environ.get("SHELFMARK_ACCESS_CODE", "").strip()
+COOKIE = "shelfmark_access"
+OPEN_PATHS = ("/static/", "/sw.js", "/manifest.webmanifest", "/unlock", "/healthz")
 
 templates = Jinja2Templates(directory=str(ROOT / "web" / "templates"))
 
@@ -50,6 +70,87 @@ def lifespan(app: FastAPI):
 
 app = FastAPI(title="shelfmark", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
+
+
+@app.middleware("http")
+async def require_access_code(request: Request, call_next):
+    """Gate everything but the shell when SHELFMARK_ACCESS_CODE is set.
+
+    Compared with compare_digest so a wrong guess takes the same time as a
+    right one."""
+    if not ACCESS_CODE or request.url.path.startswith(OPEN_PATHS):
+        return await call_next(request)
+    given = request.cookies.get(COOKIE, "")
+    if secrets.compare_digest(given, ACCESS_CODE):
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "locked"}, status_code=401)
+    return RedirectResponse(f"/unlock?next={quote(str(request.url.path))}",
+                            status_code=303)
+
+
+@app.get("/unlock", response_class=HTMLResponse)
+def unlock_form(request: Request, next: str = "/", bad: int = 0):
+    if not ACCESS_CODE:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "unlock.html",
+                                      {"next": next, "bad": bad})
+
+
+@app.post("/unlock")
+def unlock(code: str = Form(""), next: str = Form("/")):
+    if not ACCESS_CODE or not secrets.compare_digest(code.strip(), ACCESS_CODE):
+        return RedirectResponse(f"/unlock?next={quote(next)}&bad=1", status_code=303)
+    # A local redirect only: `next` arrives from the query string, so an
+    # absolute URL here would make this an open redirect.
+    target = next if next.startswith("/") and not next.startswith("//") else "/"
+    r = RedirectResponse(target, status_code=303)
+    r.set_cookie(COOKIE, ACCESS_CODE, httponly=True, samesite="lax",
+                 secure=os.environ.get("SHELFMARK_HTTPS", "") == "1",
+                 max_age=60 * 60 * 24 * 30)
+    return r
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    """For the reverse proxy and for `systemctl` to tell working from wedged."""
+    with db_con() as c:
+        queued = c.execute("SELECT COUNT(*) AS n FROM jobs "
+                           "WHERE state IN ('queued','running')").fetchone()["n"]
+    return {"ok": True, "version": __version__, "active_jobs": queued,
+            "vision": "fake" if os.environ.get("SHELFCAT_FAKE_VISION") else "real"}
+
+
+def _unique(updir: pathlib.Path, name: str) -> pathlib.Path:
+    """A destination that cannot overwrite an earlier upload.
+
+    Phones name every photograph IMG_0001.jpg, so two albums in one sitting
+    collide. Writing to the same path silently replaced a frame -- a whole
+    shelf gone from the catalogue with nothing to show it had been there."""
+    dest = updir / name
+    if not dest.exists():
+        return dest
+    stem, suffix = dest.stem, dest.suffix
+    for n in range(2, 1000):
+        alt = updir / f"{stem}~{n}{suffix}"
+        if not alt.exists():
+            return alt
+    raise HTTPException(409, f"too many uploads named {name}")
+
+
+def _decodes(path: pathlib.Path) -> bool:
+    """Whether the bytes are really the image the extension claims.
+
+    A truncated or renamed file passes the extension check and then fails deep
+    in the worker with a traceback about JPEG markers, which tells the
+    librarian nothing. Checked here, it is one clear sentence."""
+    from PIL import Image
+    try:
+        with Image.open(path) as im:
+            im.verify()
+        return True
+    except Exception:
+        return False
 
 
 @contextlib.contextmanager
@@ -115,29 +216,57 @@ async def upload(request: Request, collection: str = Form("Shelf"),
     updir = work / "upload"
     updir.mkdir(parents=True, exist_ok=True)
 
+    # Refuse before writing anything if the disk cannot take it. Running out
+    # of space mid-job can corrupt the SQLite database, which costs the
+    # catalogue and not merely this upload.
+    free = shutil.disk_usage(updir).free
+    if free < MIN_FREE_BYTES:
+        shutil.rmtree(work, ignore_errors=True)
+        raise HTTPException(507, f"only {free // (1024*1024)} MB free on the "
+                                 f"server; at least "
+                                 f"{MIN_FREE_BYTES // (1024*1024)} MB is needed")
+
     # Rejections are reported, never silent: a librarian who uploads twelve
     # photographs and gets eleven frames must be told which one was dropped
     # and why, or the gap in the catalogue is invisible.
     kept, rejected = [], []
-    for f in photos:
+    total = 0
+    for n, f in enumerate(photos):
         name = pathlib.Path(f.filename or "frame").name
+        if n >= MAX_FILES:
+            rejected.append(f"{name}: over the {MAX_FILES}-photograph limit for "
+                            f"one sitting — upload the rest as a second batch "
+                            f"and it will continue the shelf numbering")
+            continue
         suffix = pathlib.Path(name).suffix.lower()
         if suffix not in ALLOWED_SUFFIX:
             rejected.append(f"{name}: not an image ({suffix or 'no extension'})")
             continue
-        dest = updir / name
+        dest = _unique(updir, name)
         size = 0
         with dest.open("wb") as out:
             while chunk := await f.read(1 << 20):
                 size += len(chunk)
-                if size > MAX_BYTES:
+                if size > MAX_BYTES or total + size > MAX_TOTAL_BYTES:
                     break
                 out.write(chunk)
+        total += size
         if size > MAX_BYTES:
             dest.unlink(missing_ok=True)
             rejected.append(f"{name}: larger than {MAX_BYTES // (1024*1024)} MB")
+        elif total > MAX_TOTAL_BYTES:
+            dest.unlink(missing_ok=True)
+            rejected.append(f"{name}: this batch passed "
+                            f"{MAX_TOTAL_BYTES // (1024*1024)} MB in total")
+        elif size == 0:
+            dest.unlink(missing_ok=True)
+            rejected.append(f"{name}: the file was empty")
+        elif not _decodes(dest):
+            dest.unlink(missing_ok=True)
+            rejected.append(f"{name}: not a readable {suffix.lstrip('.')} — the "
+                            f"file may have been truncated in transfer")
         else:
-            kept.append(name)
+            kept.append(dest.name)
 
     if not kept:
         shutil.rmtree(work, ignore_errors=True)
@@ -148,7 +277,9 @@ async def upload(request: Request, collection: str = Form("Shelf"),
         return templates.TemplateResponse(
             request, "index.html",
             {"collections": colls, "pending": pending,
-             "error": "No usable images were uploaded.", "rejected": rejected,
+             "error": ("No usable images were uploaded."
+                       if rejected else
+                       "No photographs were attached."), "rejected": rejected,
              "fake": os.environ.get("SHELFCAT_FAKE_VISION", "")}, status_code=400)
 
     with db_con() as c:
